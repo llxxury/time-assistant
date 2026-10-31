@@ -181,7 +181,22 @@ score = w·i + (1 − w)·u      w 默认 0.45，界面上是一根滑杆
 - **跨周滚动**：`roll.js` 的 `LISTS` 里已经带上 `pins`，和 log/pending 一样迁移。
 
 测试在 `tests/pins.test.js`（7 条）+ `tests/roll.test.js` 里的一条迁移测试。
-### 界面风格：普通 / 玻璃 / 考卷（`uiMode`）
+### 左右滑动切页
+
+`TAB_ORDER` 定义顺序（现在→计划→任务→统计→设置）。手势挂在 `document` 上：
+
+- `touchstart` 记录起点，落在 `.sheet` / `.confirm` / 输入框 / `.chips` / `.seg` 里直接放弃
+- `touchmove` 先判方向：横向分量 > 纵向 1.15 倍才接管，否则 `swipe = null`，把手势还给滚动
+- 拖动时直接改 `#app` 的 `translateX`（`transition: none`），首尾给 0.28 阻尼
+- `touchend` 判定：位移超过 `min(90px, 宽度*22%)` 且存在相邻页才切，否则回弹
+- 切页用 `slideTo()`：滑出 → `paint()` → 从另一侧滑入
+
+**为什么不做「双页同时渲染」**：那要改渲染架构（把 paint 变成多页缓存），代价远大于收益。
+现在的方案只有一个页面在 DOM 里，拖动时背后是背景色，视觉上可以接受。
+
+`paint()` 开头会清掉 `#app` 的 transform，避免切页动画中途点标签导致内容错位。
+
+**注意**：手势只监听 touch 事件，电脑浏览器里用鼠标拖不会触发（真机才有效）。### 界面风格：普通 / 玻璃 / 考卷（`uiMode`）
 
 `store.uiMode` 有三个值：`plain`（默认）、`glass`、`exam`。实现是同一套「可拆卸外挂」：
 `applySkin()` 按值往 `<head>` 插对应的 `skin-*.css`，并给 `<html>` 打 `data-ui`，切换时删掉不用的那个。

@@ -2157,6 +2157,110 @@ function renderChips() {
   return box;
 }
 
+/* ================= 左右滑动切页 ================= */
+// 跟手拖动 + 松手判定。不做「双页同时渲染」——那要改渲染架构，代价远大于收益。
+const TAB_ORDER = ['now', 'week', 'tasks', 'stats', 'settings'];
+
+let swipe = null;
+
+/** 这些地方不该触发切页：弹层、输入框、横向滚动的控件 */
+function swipeBlocked(target) {
+  if (!target || !target.closest) return true;
+  if (document.querySelector('.sheet, .confirm')) return true;
+  return !!target.closest('input, textarea, select, .sheet, .confirm, .chips, .theme-grid, .seg');
+}
+
+document.addEventListener(
+  'touchstart',
+  (e) => {
+    if (e.touches.length !== 1 || swipeBlocked(e.target)) {
+      swipe = null;
+      return;
+    }
+    swipe = { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, dy: 0, decided: false, active: false };
+  },
+  { passive: true }
+);
+
+document.addEventListener(
+  'touchmove',
+  (e) => {
+    if (!swipe || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    swipe.dx = t.clientX - swipe.x;
+    swipe.dy = t.clientY - swipe.y;
+
+    if (!swipe.decided) {
+      if (Math.abs(swipe.dx) < 10 && Math.abs(swipe.dy) < 10) return;
+      swipe.decided = true;
+      // 横向明显大于纵向才接管，否则把手势让给页面滚动
+      swipe.active = Math.abs(swipe.dx) > Math.abs(swipe.dy) * 1.15;
+      if (!swipe.active) {
+        swipe = null;
+        return;
+      }
+    }
+    if (!swipe.active) return;
+
+    e.preventDefault();
+    const i = TAB_ORDER.indexOf(view.tab);
+    const edge = (swipe.dx > 0 && i === 0) || (swipe.dx < 0 && i === TAB_ORDER.length - 1);
+    const dx = edge ? swipe.dx * 0.28 : swipe.dx; // 到头了给点阻尼
+    app.style.transition = 'none';
+    app.style.transform = `translateX(${dx}px)`;
+  },
+  { passive: false }
+);
+
+document.addEventListener('touchend', () => {
+  if (!swipe || !swipe.active) {
+    swipe = null;
+    return;
+  }
+  const dx = swipe.dx;
+  const i = TAB_ORDER.indexOf(view.tab);
+  const dir = dx < 0 ? 1 : -1;
+  const next = TAB_ORDER[i + dir];
+  const enough = Math.abs(dx) > Math.min(90, (app.offsetWidth || 360) * 0.22);
+  swipe = null;
+
+  if (!next || !enough) return springBack();
+  slideTo(next, dir);
+});
+
+document.addEventListener('touchcancel', () => {
+  if (swipe && swipe.active) springBack();
+  swipe = null;
+});
+
+function springBack() {
+  app.style.transition = 'transform .18s ease-out';
+  app.style.transform = 'translateX(0)';
+  setTimeout(() => {
+    app.style.transition = '';
+  }, 200);
+}
+
+/** dir: 1 = 往左滑（下一页），-1 = 往右滑（上一页） */
+function slideTo(tab, dir) {
+  const w = app.offsetWidth || window.innerWidth;
+  app.style.transition = 'transform .2s cubic-bezier(.2,.7,.3,1)';
+  app.style.transform = `translateX(${-dir * w}px)`;
+  setTimeout(() => {
+    view.tab = tab;
+    paint();
+    window.scrollTo({ top: 0 });
+    app.style.transition = 'none';
+    app.style.transform = `translateX(${dir * w}px)`;
+    requestAnimationFrame(() => {
+      app.style.transition = 'transform .2s cubic-bezier(.2,.7,.3,1)';
+      app.style.transform = 'translateX(0)';
+      setTimeout(() => {
+        app.style.transition = '';
+      }, 240);
+    });
+  }, 190);
+}
 /* ================= 主渲染 ================= */
 
 const app = document.getElementById('app');
@@ -2230,6 +2334,7 @@ function renderRecoveryBar() {
 
 function paint(opts = {}) {
   const keepY = opts.keep ? window.scrollY : 0;
+  app.style.transform = '';
   app.textContent = '';
   formEl = null;
   document.querySelectorAll('.seg-btn').forEach((b) => {
