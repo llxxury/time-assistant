@@ -22,17 +22,57 @@ function addDays(dateStr, n) {
 
 const bridge = typeof window !== 'undefined' ? window.Cosmos : null;
 
+// 读存档分三态：empty（首次启动）/ ok / corrupt。
+// 关键：corrupt 时**绝不覆盖**。老版本会把它当成首次启动灌种子数据，
+// 用户就这么在无提示的情况下丢过一次全部数据。
 function readStore() {
+  let raw = '';
   try {
-    const raw = bridge && bridge.load ? bridge.load() : localStorage.getItem(KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
+    raw = (bridge && bridge.load ? bridge.load() : localStorage.getItem(KEY)) || '';
+  } catch (e) {
+    return { state: 'error', raw: '', error: String(e) };
+  }
+  if (!raw) return { state: 'empty', raw: '' };
+  try {
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return { state: 'corrupt', raw };
+    return { state: 'ok', data, raw };
+  } catch (e) {
+    return { state: 'corrupt', raw };
   }
 }
 
-let store = readStore();
+let storageLocked = false; // 存档损坏时锁住写入，保住现场
+let recoverInfo = null; // { raw } 供恢复面板导出
+let recoveredFromBackup = false;
+
+const first = readStore();
+let store = first.state === 'ok' ? first.data : null;
+
+if (!store && (first.state === 'corrupt' || first.state === 'error')) {
+  // 先试 .bak（上一次成功保存的副本）
+  let bak = null;
+  try {
+    const rawBak = bridge && bridge.loadBackup ? bridge.loadBackup() : '';
+    if (rawBak) bak = JSON.parse(rawBak);
+  } catch (e) {
+    bak = null;
+  }
+  if (bak && typeof bak === 'object') {
+    store = bak;
+    recoveredFromBackup = true;
+    // 丢掉坏掉的主存档，免得接下来第一次 save() 把它复制进 .bak
+    try {
+      if (bridge && bridge.discardPrimary) bridge.discardPrimary();
+    } catch (e) {}
+  } else {
+    recoverInfo = { raw: first.raw || '' };
+    storageLocked = true; // 等用户决定，期间一个字都不写
+  }
+}
+
 if (!store) {
+  // 内存里先给一份能渲染的数据；storageLocked 时不会落盘
   const fx = seed;
   const today = todayStr();
   // 滚动起点 = 今天。示例任务的截止按「今天 + 原来的天数偏移」铺开，
@@ -42,10 +82,10 @@ if (!store) {
     startDate: today,
     tasks: fx.tasks.map((t) => ({ ...t, deadlineDate: addDays(today, t.deadlineDay ?? 0) })),
   };
-  writeStore();
 }
 
 function writeStore() {
+  if (storageLocked) return; // 恢复模式：宁可不保存，也不覆盖现场
   try {
     const json = JSON.stringify(store);
     if (bridge && bridge.save) bridge.save(json);
@@ -54,6 +94,9 @@ function writeStore() {
     toast('保存失败：' + e.message);
   }
 }
+
+// 首次启动：把种子数据落盘
+if (first.state === 'empty') writeStore();
 
 /* ================= 派生 ================= */
 
@@ -367,6 +410,72 @@ async function copyText(text) {
   }
 }
 
+
+/* ================= 导入 ================= */
+
+/** 判断像不像本 App 的存档 */
+function looksLikeStore(o) {
+  return !!o && typeof o === 'object' && Array.isArray(o.tasks) && !!o.template && typeof o.template === 'object';
+}
+
+/** 把一段 JSON 文本导入成当前存档。返回是否成功 */
+function importText(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    toast('不是合法的 JSON');
+    return false;
+  }
+  if (!looksLikeStore(data)) {
+    toast('这不像是本 App 的存档（缺 tasks / template）');
+    return false;
+  }
+  const n = data.tasks.length;
+  const logN = (data.log || []).length;
+  const start = data.startDate || '?';
+  if (!confirm(`用这份存档覆盖当前数据？\n\n任务 ${n} 件，完成记录 ${logN} 条，起点 ${start}\n（当前数据会被保留成一份 .bak）`)) {
+    return false;
+  }
+  store = data;
+  storageLocked = false;
+  recoverInfo = null;
+  writeStore();
+  rebuild();
+  paint();
+  toast('已导入');
+  return true;
+}
+
+/** 原生选文件；回调由 MainActivity 触发 window.__TA_IMPORT */
+function pickImportFile() {
+  if (bridge && bridge.pickFile) {
+    bridge.pickFile();
+    return;
+  }
+  // 浏览器兜底
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = () => {
+    const f = input.files && input.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => importText(String(r.result || ''));
+    r.readAsText(f);
+  };
+  input.click();
+}
+
+// MainActivity 选完文件后会调这个
+window.__TA_IMPORT = () => {
+  const text = bridge && bridge.takeImport ? bridge.takeImport() : '';
+  if (!text) {
+    toast('没有读到文件');
+    return;
+  }
+  importText(text);
+};
 
 /* ================= 诊断日志 ================= */
 
@@ -1530,6 +1639,7 @@ function renderSettings() {
     <div class="card">
       <button class="ghost-btn" id="do-test">测试通知（10 秒后）</button>
       <button class="ghost-btn" id="do-export">导出 JSON（备份）</button>
+      <button class="ghost-btn" id="do-import">导入 JSON（恢复备份）</button>
       <button class="ghost-btn danger" id="do-reset">清空所有任务</button>
     </div>`);
   dataCard.querySelector('#do-test').onclick = () => {
@@ -1543,6 +1653,7 @@ function renderSettings() {
   dataCard.querySelector('#do-export').onclick = () => {
     exportText(`scheduler-${todayStr()}.json`, 'application/json', JSON.stringify(store, null, 2));
   };
+  dataCard.querySelector('#do-import').onclick = () => pickImportFile();
   dataCard.querySelector('#do-reset').onclick = () => {
     if (!confirm('清空所有任务？课表和时间模板会保留。')) return;
     store.tasks = [];
@@ -1599,6 +1710,73 @@ function renderChips() {
 
 const app = document.getElementById('app');
 
+/** 存档损坏时顶部的红条：先保住现场，再让用户选 */
+function renderRecoveryBar() {
+  const bar = el(`<div class="banner" style="background:#b3261e;color:#fff;border-radius:12px;margin:10px 12px">
+      <div style="font-weight:600;margin-bottom:6px">存档读不出来，已停止保存</div>
+      <div style="font-size:13px;opacity:.9;margin-bottom:10px">
+        没有覆盖原文件。可以先导出原始内容，或从备份恢复。</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="ghost-btn" id="rec-export" style="flex:1">导出原始数据</button>
+        <button class="ghost-btn" id="rec-backup" style="flex:1">从备份恢复</button>
+        <button class="ghost-btn danger" id="rec-reset" style="flex:1">清空重来</button>
+      </div>
+    </div>`);
+
+  bar.querySelector('#rec-export').onclick = () => {
+    const text = (recoverInfo && recoverInfo.raw) || '';
+    if (!text) {
+      toast('没有可导出的原始内容');
+      return;
+    }
+    exportText(`corrupt-${todayStr()}.json`, 'application/json', text);
+  };
+
+  bar.querySelector('#rec-backup').onclick = () => {
+    let bak = null;
+    try {
+      const rawBak = bridge && bridge.loadBackup ? bridge.loadBackup() : '';
+      if (rawBak) bak = JSON.parse(rawBak);
+    } catch (e) {
+      bak = null;
+    }
+    if (!bak || !looksLikeStore(bak)) {
+      toast('没有可用的备份');
+      return;
+    }
+    if (!confirm(`备份里有 ${bak.tasks.length} 件任务。用它覆盖当前（损坏的）存档？`)) return;
+    store = bak;
+    storageLocked = false;
+    recoverInfo = null;
+    try {
+      if (bridge && bridge.discardPrimary) bridge.discardPrimary();
+    } catch (e) {}
+    writeStore();
+    rebuild();
+    paint();
+    toast('已从备份恢复');
+  };
+
+  bar.querySelector('#rec-reset').onclick = () => {
+    if (!confirm('清空重来？损坏的存档会被覆盖，建议先「导出原始数据」。')) return;
+    const fx = seed;
+    const today = todayStr();
+    store = {
+      ...fx,
+      startDate: today,
+      tasks: fx.tasks.map((t) => ({ ...t, deadlineDate: addDays(today, t.deadlineDay ?? 0) })),
+    };
+    storageLocked = false;
+    recoverInfo = null;
+    writeStore();
+    rebuild();
+    paint();
+    toast('已重置');
+  };
+
+  return bar;
+}
+
 function paint(opts = {}) {
   const keepY = opts.keep ? window.scrollY : 0;
   app.textContent = '';
@@ -1606,6 +1784,8 @@ function paint(opts = {}) {
   document.querySelectorAll('.seg-btn').forEach((b) => {
     b.classList.toggle('is-on', b.dataset.tab === view.tab);
   });
+
+  if (storageLocked) app.append(renderRecoveryBar());
 
   if (view.tab === 'now') {
     app.append(renderNow());
@@ -1636,6 +1816,8 @@ document.querySelectorAll('.seg-btn').forEach((b) => {
 applyTheme();
 rebuild();
 paint();
+if (recoveredFromBackup) toast('存档损坏，已从备份恢复');
+if (storageLocked) toast('存档损坏，已停止保存');
 
 // ---- 页面开着不动也要跟着时间走 ----
 const busy = () => formEl || document.querySelector('.sheet');

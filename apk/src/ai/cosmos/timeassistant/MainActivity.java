@@ -22,6 +22,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -31,6 +32,8 @@ import java.io.InputStream;
 public class MainActivity extends Activity {
     private static final String DATA_FILE = "time-assistant-v1.json";
     private static final String HOST = "appassets.local";
+    private static final int REQ_PICK = 1001;
+    private String pendingImport = null;
     private WebView web;
 
     @Override
@@ -68,8 +71,8 @@ public class MainActivity extends Activity {
                 if (req != null && req.isForMainFrame()) {
                     v.loadData("<meta name=viewport content='width=device-width'>"
                             + "<div style='font:16px sans-serif;padding:24px'>"
-                            + "<h3>椤甸潰娌¤兘鍔犺浇</h3><p>" + err.getDescription() + "</p>"
-                            + "<p style='color:#888'>鎶婅繖涓埅鍥惧彂缁欏紑鍙戝氨琛屻€?/p></div>",
+                            + "<h3>页面没能加载</h3><p>" + err.getDescription() + "</p>"
+                            + "<p style='color:#888'>把这个截图发给开发就行。</p></div>",
                             "text/html", "utf-8");
                 }
             }
@@ -121,6 +124,39 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         if (web != null && web.canGoBack()) web.goBack();
         else super.onBackPressed();
+    }
+
+    /** 文件选择器回来：把内容暂存起来，再回调页面去取 */
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != REQ_PICK) return;
+        pendingImport = null;
+        if (res == RESULT_OK && data != null && data.getData() != null) {
+            try {
+                InputStream in = getContentResolver().openInputStream(data.getData());
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n;
+                int total = 0;
+                while ((n = in.read(buf)) > 0) {
+                    total += n;
+                    if (total > 8 * 1024 * 1024) break; // 别被超大文件拖死
+                    bos.write(buf, 0, n);
+                }
+                in.close();
+                pendingImport = new String(bos.toByteArray(), "UTF-8");
+            } catch (Exception e) {
+                pendingImport = null;
+            }
+        }
+        notifyImportDone();
+    }
+
+    private void notifyImportDone() {
+        runOnUiThread(() -> {
+            if (web != null) web.evaluateJavascript("window.__TA_IMPORT && window.__TA_IMPORT()", null);
+        });
     }
 
     public class Bridge {
@@ -237,14 +273,117 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public boolean save(String json) {
+            File dir = getFilesDir();
+            File target = new File(dir, DATA_FILE);
+            File tmp = new File(dir, DATA_FILE + ".tmp");
+            File bak = new File(dir, DATA_FILE + ".bak");
+            FileOutputStream out = null;
             try {
-                FileOutputStream out = new FileOutputStream(new File(getFilesDir(), DATA_FILE));
+                // 先写临时文件并 fsync，再原子 rename。中途被杀 / 掉电只会留下 .tmp，
+                // 原存档完好——比「直接覆盖」安全一个量级。
+                out = new FileOutputStream(tmp);
                 out.write(json.getBytes("UTF-8"));
+                out.flush();
+                out.getFD().sync();
                 out.close();
+                out = null;
+                if (target.exists()) copyFile(target, bak); // 上一份好数据留底
+                if (!tmp.renameTo(target)) {
+                    copyFile(tmp, target);                  // rename 极少失败，兜一下
+                    tmp.delete();
+                }
                 return true;
+            } catch (Exception e) {
+                if (out != null) {
+                    try {
+                        out.close();
+                    } catch (Exception ignored) {
+                    }
+                }
+                return false;
+            }
+        }
+
+        /** 上一份存档（.bak），坏档时用来恢复 */
+        @JavascriptInterface
+        public String loadBackup() {
+            return readFile(new File(getFilesDir(), DATA_FILE + ".bak"));
+        }
+
+        /**
+         * 删掉主存档，只保留 .bak。
+         * 从备份恢复时先调它——否则紧接着的 save() 会把「坏掉的主存档」复制进 .bak，
+         * 把唯一的好备份冲掉。
+         */
+        @JavascriptInterface
+        public boolean discardPrimary() {
+            try {
+                File f = new File(getFilesDir(), DATA_FILE);
+                return !f.exists() || f.delete();
             } catch (Exception e) {
                 return false;
             }
+        }
+
+        private void copyFile(File from, File to) throws IOException {
+            FileInputStream in = new FileInputStream(from);
+            FileOutputStream out = new FileOutputStream(to);
+            try {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                out.flush();
+                out.getFD().sync();
+            } finally {
+                try {
+                    in.close();
+                } catch (Exception ignored) {
+                }
+                try {
+                    out.close();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        private String readFile(File f) {
+            if (f == null || !f.exists()) return null;
+            try {
+                byte[] buf = new byte[(int) f.length()];
+                FileInputStream in = new FileInputStream(f);
+                int off = 0;
+                while (off < buf.length) {
+                    int n = in.read(buf, off, buf.length - off);
+                    if (n <= 0) break;
+                    off += n;
+                }
+                in.close();
+                return new String(buf, "UTF-8");
+            } catch (Exception e) {
+                return null;
+            }
+        }
+
+        /** 让用户挑一个文件导入（系统文件选择器），选完通过 window.__TA_IMPORT 回调 */
+        @JavascriptInterface
+        public void pickFile() {
+            try {
+                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("*/*");
+                startActivityForResult(i, REQ_PICK);
+            } catch (Exception e) {
+                pendingImport = null;
+                notifyImportDone();
+            }
+        }
+
+        /** 取回刚选中的文件内容（取一次就清空） */
+        @JavascriptInterface
+        public String takeImport() {
+            String t = pendingImport;
+            pendingImport = null;
+            return t;
         }
 
         @JavascriptInterface
@@ -252,8 +391,8 @@ public class MainActivity extends Activity {
             try {
                 Intent it = new Intent(MainActivity.this, AlarmReceiver.class);
                 it.putExtra("id", "test");
-                it.putExtra("title", "娴嬭瘯鎻愰啋");
-                it.putExtra("text", "鑳界湅鍒拌繖鏉★紝璇存槑閫氱煡閫氫簡");
+                it.putExtra("title", "测试提醒");
+                it.putExtra("text", "能看到这条，说明通知通了");
                 PendingIntent pi = PendingIntent.getBroadcast(MainActivity.this, 999999, it,
                         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
                 AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
