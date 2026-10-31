@@ -1335,7 +1335,7 @@ function renderAxisInto(frag) {
 
 function renderTasks() {
   const frag = document.createDocumentFragment();
-  frag.append(el(`<div class="section-title">本周任务 · ${store.tasks.length} 件</div>`));
+  frag.append(el(`<div class="section-title">全部任务 · ${store.tasks.length} 件</div>`));
 
   if (!store.tasks.length) {
     frag.append(
@@ -1347,7 +1347,10 @@ function renderTasks() {
     const live = schedule.tasks.find((x) => x.id === t.id);
     const done = t.doneMin || 0;
     const left = Math.max(0, t.estMin - done);
-    const planned = live ? live.chunks.reduce((s, c) => s + (c.end - c.start), 0) : 0;
+    // 注意：锁定块不会进 live.chunks，必须从 placed 里数，
+    // 否则满锁的任务会被算成「已排 0」，全部误报「排不下」
+    const mine = schedule.placed.filter((p) => p.taskId === t.id);
+    const planned = mine.reduce((s, p) => s + (p.end - p.start), 0);
     const finished = left <= 0;
     const ok = finished || planned >= left;
     const row = el(`
@@ -1364,7 +1367,7 @@ function renderTasks() {
               finished
                 ? '✓ 已完成'
                 : ok
-                  ? `剩 ${fmtDur(left)}，已排 ${fmtDur(planned)}（${live.chunks.length} 块）`
+                  ? `剩 ${fmtDur(left)}，已排 ${fmtDur(planned)}（${mine.length} 块）`
                   : `排不下：只剩 ${fmtDur(planned)}，还需要 ${fmtDur(left)}`
             }
           </div>
