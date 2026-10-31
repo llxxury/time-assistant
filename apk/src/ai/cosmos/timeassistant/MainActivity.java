@@ -46,6 +46,8 @@ public class MainActivity extends Activity {
         WebView.setWebContentsDebuggingEnabled(true);
 
         web = new WebView(this);
+        // 关掉 WebView 的 overscroll 光晕/拉伸：上下拉到头会「弹」，很像网页
+        web.setOverScrollMode(android.view.View.OVER_SCROLL_NEVER);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
