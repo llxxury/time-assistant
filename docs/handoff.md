@@ -150,6 +150,21 @@ score = w·i + (1 − w)·u      w 默认 0.45，界面上是一根滑杆
 
 时间一律用**当天分钟数**表示（`19:30` → 1170），不做 UTC 换算。
 
+### 实验功能：考卷模式（`uiMode`）
+
+`store.uiMode` 只有两个值：缺省/`plain`（正常界面）和 `exam`（考卷皮肤）。
+
+皮肤是**可拆卸外挂**：`applySkin()` 在开启时往 `<head>` 插一个 `<link href="skin-exam.css">`，
+同时给 `<html>` 加 `data-ui="exam"`；关掉就删 link、去掉属性，**界面完全回到原样**。
+`skin-exam.css` 的样式全部写在 `html[data-ui='exam']` 下面，不加载就零影响。
+
+三个局部改动都走同一个开关，且各自是独立小分支，主线渲染没动：
+空状态（`renderNow` 里的空白试卷）、完成盖章（`flashStamp()`）、待处理卡片（错题样式 + 文案）。
+贴纸层是绝对定位的 `pointer-events:none` 装饰，不占布局。
+
+**注意**：`applyTheme()` 写的是行内 CSS 变量，所以皮肤文件里覆盖变量必须用 `!important`。
+新增皮肤只要再写一个 `skin-xxx.css` + 在 `applySkin()` 里加一个分支即可。
+
 ### 数据安全（别退回去）
 
 只有一个 JSON，但它丢不起。现在的防线是四层，改代码时别拆：

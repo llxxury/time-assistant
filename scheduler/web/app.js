@@ -213,6 +213,7 @@ function completeBlock(b) {
   store.pending = (store.pending || []).filter((x) => x.key !== `${b.taskId}|${b.day}|${b.start}`);
   rebuild();
   paint();
+  flashStamp();
   toast(`完成 ${fmtDur(minutes)}`);
 }
 
@@ -261,16 +262,21 @@ function renderPending() {
   frag.append(el(`<div class="section-title">待处理 · ${list.length} 段没打勾</div>`));
   for (const p of list) {
     const t = store.tasks.find((x) => x.id === p.taskId);
+    const meta = `${WD[wdOfDate(p.date ?? dateOf(p.day))]} ${fmtClock(p.start)}–${fmtClock(p.end)} · ${fmtDur(
+      p.end - p.start
+    )}`;
+    const exam = uiMode() === SKIN_EXAM;
     const card = el(`
       <div class="pending">
         <div class="pending-title">${t?.title ?? '（任务已删除）'}</div>
-        <div class="pending-meta">${WD[wdOfDate(p.date ?? dateOf(p.day))]} ${fmtClock(p.start)}–${fmtClock(p.end)} · ${fmtDur(p.end - p.start)}</div>
+        <div class="pending-meta">${meta}</div>
         <div class="pending-actions">
-          <button data-a="done">完成了</button>
-          <button data-a="later">顺延</button>
-          <button data-a="edit">改剩余</button>
-          <button data-a="del">删除</button>
+          <button data-a="done">${exam ? '补上' : '完成了'}</button>
+          <button data-a="later">${exam ? '延后' : '顺延'}</button>
+          <button data-a="edit">${exam ? '改时长' : '改剩余'}</button>
+          <button data-a="del">${exam ? '删掉' : '删除'}</button>
         </div>
+        ${exam && p === list[0] ? sticker('note', 2, '这题空着') : ''}
       </div>`);
     card.querySelectorAll('button').forEach((b) => {
       b.onclick = () => handlePending(p, b.dataset.a);
@@ -534,7 +540,18 @@ function renderNow() {
   const { day, minute, live } = clockOf();
 
   if (!store.tasks.length) {
-    const card = el(`<section class="now-card empty">
+    const card =
+      uiMode() === SKIN_EXAM
+        ? el(`<section class="now-card empty exam-paper">
+        <div class="paper-kicker">${new Date().getFullYear()} 学年度 · 时间安排</div>
+        <div class="paper-title">期 末 测 验</div>
+        <div class="paper-rule"></div>
+        <div class="paper-ask">本页暂无题目</div>
+        <div class="paper-sub">去「任务」加一道，它就开始替你排。</div>
+        <div class="paper-blank"><span>姓名</span><i></i><span>学号</span><i></i></div>
+        ${sticker('note', 0, '这页是空白的')}
+      </section>`)
+        : el(`<section class="now-card empty">
         <div class="empty-mark">＋</div>
         <div class="now-task">还没有任务</div>
         <div class="now-sub">去「任务」页加一件，这里就开始替你安排。</div>
@@ -1168,6 +1185,51 @@ function applyTheme() {
   s.setProperty('--tint-2', mixHex(t.b, 0.9));
 }
 
+/* ================= 「考卷」皮肤（实验，默认关） ================= */
+
+const SKIN_EXAM = 'exam';
+const uiMode = () => (store.uiMode === SKIN_EXAM ? SKIN_EXAM : 'plain');
+
+/**
+ * 皮肤是「可拆卸的外挂」：打开时插一个 link，关掉时删掉。
+ * 不加载 = 完全不影响原界面，连字节都不多。
+ */
+function applySkin() {
+  const on = uiMode() === SKIN_EXAM;
+  document.documentElement.dataset.ui = on ? SKIN_EXAM : '';
+  let link = document.getElementById('skin-exam');
+  if (on && !link) {
+    link = document.createElement('link');
+    link.id = 'skin-exam';
+    link.rel = 'stylesheet';
+    link.href = 'skin-exam.css';
+    document.head.append(link);
+  } else if (!on && link) {
+    link.remove();
+  }
+}
+
+/** 贴纸：绝对定位的装饰，pointer-events:none，不占布局。位置贴着卡片边缘，别压按钮 */
+const STICKER_POS = ['right:10px;top:-10px', 'left:-8px;top:-12px', 'right:22px;bottom:-10px'];
+function sticker(kind, posIdx, text) {
+  const label = kind === 'note' ? text || '背！' : kind === 'arrow' ? '↗' : '';
+  return `<span class="sticker ${kind}" style="${STICKER_POS[posIdx % STICKER_POS.length]}">${label}</span>`;
+}
+
+/** 打勾后盖一个「已阅」章（1.3 秒自动消失） */
+function flashStamp() {
+  if (uiMode() !== SKIN_EXAM) return;
+  const card = document.querySelector('.now-card');
+  if (!card) return;
+  const d = new Date();
+  const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  const s = document.createElement('div');
+  s.className = 'exam-stamp';
+  s.innerHTML = `已 阅<small>${dateOf(nowDayIdx()).slice(5)} ${hm}</small>`;
+  card.append(s);
+  setTimeout(() => s.remove(), 1400);
+}
+
 /* ================= 帮助 ================= */
 
 function openHelp() {
@@ -1619,6 +1681,32 @@ function renderSettings() {
   };
   frag.append(themeCard);
 
+  /* 实验（整活层，默认关） */
+  frag.append(el(`<div class="section-title">实验</div>`));
+  const examOn = uiMode() === SKIN_EXAM;
+  const expCard = el(`<div class="card">
+      <div class="set-row">
+        <div>
+          <div class="set-title">考卷模式</div>
+          <div class="set-sub">${examOn ? '开着：界面是一张试卷，配色固定' : '把界面变成一张试卷（实验功能，随时可关）'}</div>
+        </div>
+        <button class="switch ${examOn ? 'on' : ''}" id="ui-mode"><i></i></button>
+      </div>
+    </div>`);
+  expCard.querySelector('#ui-mode').onclick = () => {
+    store.uiMode = uiMode() === SKIN_EXAM ? 'plain' : SKIN_EXAM;
+    writeStore();
+    applySkin();
+    paint();
+    toast(store.uiMode === SKIN_EXAM ? '考卷模式：开' : '已切回普通界面');
+  };
+  frag.append(expCard);
+  if (examOn) {
+    frag.append(
+      el(`<div class="footnote" style="margin:-4px 0 14px">考卷模式使用固定配色，关掉后主题颜色会恢复</div>`)
+    );
+  }
+
   /* 帮助 */
   frag.append(el(`<div class="section-title">帮助</div>`));
   const helpRow = el(`<div class="set-row clickable">
@@ -1814,6 +1902,7 @@ document.querySelectorAll('.seg-btn').forEach((b) => {
 });
 
 applyTheme();
+applySkin();
 rebuild();
 paint();
 if (recoveredFromBackup) toast('存档损坏，已从备份恢复');
