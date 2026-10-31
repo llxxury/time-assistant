@@ -936,3 +936,80 @@ html[data-scene] body {
   color: var(--accent);
   white-space: nowrap;
 }
+
+/* ================= 自绘确认框（替掉原生 confirm） ================= */
+.confirm-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+}
+.confirm {
+  position: relative;
+  z-index: 61;
+  width: 100%;
+  max-width: 340px;
+  background: #fff;
+  border-radius: 18px;
+  padding: 22px 20px 16px;
+  box-shadow: 0 20px 60px rgba(16, 20, 34, 0.22);
+}
+.confirm-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.confirm-text {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  margin-bottom: 18px;
+}
+.confirm-actions {
+  display: flex;
+  gap: 10px;
+}
+.confirm-actions .btn {
+  flex: 1;
+  height: 42px;
+  font-size: 14px;
+}
+.btn-danger {
+  background: #d7263d;
+  color: #fff;
+}
+
+/* ================= 可折叠区块 ================= */
+.fold-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 2px;
+  cursor: pointer;
+  user-select: none;
+}
+.fold-head .fold-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sub);
+  letter-spacing: 0.4px;
+}
+.fold-head .fold-chev {
+  font-size: 13px;
+  color: var(--sub);
+  transition: transform 0.18s ease;
+}
+.fold-head.is-open .fold-chev {
+  transform: rotate(90deg);
+}
+.fold-body {
+  display: none;
+}
+.fold-body.is-open {
+  display: block;
+}

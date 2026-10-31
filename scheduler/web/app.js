@@ -138,17 +138,25 @@ function rebuild() {
     store.pending.push({ ...b, date: dateOf(b.day), key });
   }
 
+  const resting = Boolean(store.restUntil && Date.now() < store.restUntil);
   schedule = makeState(store, { nowDay: off, nowMinute: nm });
+
+  if (resting && Array.isArray(store.lastPlan) && store.lastPlan.length) {
+    // 休息中：冻结计划，不重排。用户刚做完一段，多出来的时间是奖励，不该被立刻填满。
+    schedule.placed = store.lastPlan.map((p) => ({ ...p }));
+  } else {
+    if (resting) store.restUntil = 0; // 计划已经空了，休息自然结束
+    plan(schedule);
+    store.lastPlan = schedule.placed.map((p) => ({
+      taskId: p.taskId,
+      day: p.day,
+      start: p.start,
+      end: p.end,
+    }));
+  }
+
   baseFree = [];
   for (let d = 0; d < store.horizonDays; d++) baseFree.push(total(freeOf(schedule, d)));
-  plan(schedule);
-
-  store.lastPlan = schedule.placed.map((p) => ({
-    taskId: p.taskId,
-    day: p.day,
-    start: p.start,
-    end: p.end,
-  }));
   writeStore();
   pushReminders();
 }
@@ -212,13 +220,23 @@ function completeBlock(b) {
   });
   store.pending = (store.pending || []).filter((x) => x.key !== `${b.taskId}|${b.day}|${b.start}`);
   removePin(b); // 打勾了，这块不再是「计划」，pin 要清掉，否则会重复扣时长
+
+  // 完成之后冻结计划：多出来的时间是奖励，由用户决定休息还是提前做下一段。
+  // 规则沿用引擎的块间休息：clamp(块长/6, 5, 20) 分钟。
+  const rest = Math.max(5, Math.min(20, Math.round(minutes / 6)));
+  store.lastPlan = (store.lastPlan || []).filter(
+    (p) => !(p.taskId === b.taskId && p.day === b.day && p.start === b.start)
+  );
+  store.restUntil = Date.now() + rest * 60000;
+  store.restMin = rest;
+
   rebuild();
   paint();
   flashStamp();
-  toast(`完成 ${fmtDur(minutes)}`);
+  toast(`完成 ${fmtDur(minutes)}，休息 ${rest} 分钟`);
 }
 
-function handlePending(p, action) {
+async function handlePending(p, action) {
   const i = store.pending.findIndex((x) => x.key === p.key);
   const t = store.tasks.find((x) => x.id === p.taskId);
 
@@ -245,7 +263,7 @@ function handlePending(p, action) {
     if (i >= 0) store.pending.splice(i, 1);
     toast(`按剩余 ${fmtDur(n)} 重排`);
   } else if (action === 'del') {
-    if (!confirm(`删除「${t?.title ?? ''}」？`)) return;
+    if (!(await askConfirm({ title: '删除任务', text: `「${t?.title ?? ''}」会被删掉，计划会重新排。`, ok: '删除', danger: true }))) return;
     store.tasks = store.tasks.filter((x) => x.id !== p.taskId);
     store.pending = store.pending.filter((x) => x.taskId !== p.taskId);
     dropPinsOfTask(p.taskId);
@@ -427,7 +445,7 @@ function looksLikeStore(o) {
 }
 
 /** 把一段 JSON 文本导入成当前存档。返回是否成功 */
-function importText(text) {
+async function importText(text) {
   let data;
   try {
     data = JSON.parse(text);
@@ -442,7 +460,14 @@ function importText(text) {
   const n = data.tasks.length;
   const logN = (data.log || []).length;
   const start = data.startDate || '?';
-  if (!confirm(`用这份存档覆盖当前数据？\n\n任务 ${n} 件，完成记录 ${logN} 条，起点 ${start}\n（当前数据会被保留成一份 .bak）`)) {
+  if (
+    !(await askConfirm({
+      title: '导入并覆盖',
+      text: `任务 ${n} 件，完成记录 ${logN} 条，起点 ${start}\n\n当前数据会先存成一份 .bak。`,
+      ok: '覆盖',
+      danger: true,
+    }))
+  ) {
     return false;
   }
   store = data;
@@ -541,6 +566,38 @@ window.addEventListener('unhandledrejection', (e) => {
 function renderNow() {
   const { day, minute, live } = clockOf();
 
+  // 休息中：刚完成一段，计划被冻结。这段时间的处置权交给用户。
+  const restLeft = store.restUntil ? Math.ceil((store.restUntil - Date.now()) / 60000) : 0;
+  if (restLeft > 0) {
+    const restList = blocksOf(day).filter((b) => b.end > minute);
+    const upcoming = restList[0];
+    const card = el(`
+      <section class="now-card">
+        <div class="now-label"><span class="dot"></span>休息中</div>
+        <div class="now-task">还剩 ${restLeft} 分钟</div>
+        <div class="now-sub">刚做完一段。这段时间归你，可以歇，也可以接着干。</div>
+        <div class="now-actions">
+          <button class="btn btn-primary" id="rest-done">结束休息</button>
+          ${upcoming ? '<button class="btn btn-ghost" id="rest-next">提前做下一段</button>' : ''}
+        </div>
+      </section>`);
+    card.querySelector('#rest-done').onclick = () => {
+      store.restUntil = 0;
+      rebuild();
+      paint();
+      toast('继续安排');
+    };
+    const nb = card.querySelector('#rest-next');
+    if (nb) {
+      nb.onclick = () => {
+        store.restUntil = 0;
+        const err = applyPlanEdit(upcoming, minute, upcoming.end - upcoming.start);
+        toast(err || '提前开始');
+      };
+    }
+    return card;
+  }
+
   if (!store.tasks.length) {
     const card =
       uiMode() === SKIN_EXAM
@@ -582,13 +639,23 @@ function renderNow() {
   const next = list.find((b) => b.start > minute);
 
   if (!cur && !next) {
-    return el(`
+    const card = el(`
       <section class="now-card">
         <div class="now-label"><span class="dot"></span>${WD[wdOf(day)]} ${mmdd(day)} · ${live ? '实时' : '预览'}</div>
         <div class="empty-mark">✓</div>
         <div class="now-task">今天已经收工</div>
         <div class="now-sub">${list.length ? '当天的安排都过去了' : '这一天没有排任务'}</div>
       </section>`);
+    // 没有任务、也没有安排时，给一个明确的入口，而不是只说一句「没有排任务」
+    if (!list.length) {
+      const go = el(`<button class="btn btn-primary" style="margin-top:14px">去添加任务</button>`);
+      go.onclick = () => {
+        view.tab = 'tasks';
+        paint();
+      };
+      card.append(go);
+    }
+    return card;
   }
 
   const b = cur ?? next;
@@ -616,7 +683,12 @@ function renderNow() {
 
   card.querySelector('#do-done').onclick = () => {
     if (isCur) completeBlock(b);
-    else toast('还没到时间。想现在就做，去「计划」里把它提前');
+    else {
+      // 立刻提前：把这一块钉到现在，计划里其它块会被绕开重排
+      store.restUntil = 0;
+      const err = applyPlanEdit(b, minute, b.end - b.start);
+      toast(err || '已提前开始');
+    }
   };
   card.querySelector('#do-later').onclick = () => {
     if (isCur) return toast('这一段正在进行，只能改时长');
@@ -897,9 +969,9 @@ function renderTasks() {
         <button class="task-del" aria-label="删除">✕</button>
       </div>`);
     row.querySelector('.task-main').onclick = () => openForm(t);
-    row.querySelector('.task-del').onclick = (e) => {
+    row.querySelector('.task-del').onclick = async (e) => {
       e.stopPropagation();
-      if (!confirm(`删除「${t.title}」？`)) return;
+      if (!(await askConfirm({ title: '删除任务', text: `「${t.title}」会被删掉，计划会重新排。`, ok: '删除', danger: true }))) return;
       store.tasks = store.tasks.filter((x) => x.id !== t.id);
       dropPinsOfTask(t.id);
       writeStore();
@@ -1559,6 +1631,51 @@ const toMin = (s) => {
 const toTime = (m) =>
   String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 
+/** 自绘确认框（替掉原生 confirm：它会带一行「网址为 http://… 的网页显示」） */
+function askConfirm(opts = {}) {
+  const { title = '确认', text = '', ok = '确定', cancel = '取消', danger = false } = opts;
+  return new Promise((resolve) => {
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <div class="sheet-mask"></div>
+      <div class="confirm-wrap"><div class="confirm">
+        <div class="confirm-title">${title}</div>
+        <div class="confirm-text">${text}</div>
+        <div class="confirm-actions">
+          <button class="btn btn-ghost" data-r="0">${cancel}</button>
+          <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-r="1">${ok}</button>
+        </div>
+      </div></div>`;
+    document.body.append(root);
+    const done = (v) => {
+      root.remove();
+      resolve(v);
+    };
+    root.querySelectorAll('.confirm-actions button').forEach((b) => {
+      b.onclick = () => done(b.dataset.r === '1');
+    });
+    root.querySelector('.sheet-mask').onclick = () => done(false);
+  });
+}
+/** 可折叠区块：标题行点击展开/收起 */
+function foldSection(title, sub, open, build) {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <div class="fold-head ${open ? 'is-open' : ''}">
+      <span class="fold-title">${title}${sub ? ' · ' + sub : ''}</span>
+      <span class="fold-chev">›</span>
+    </div>
+    <div class="fold-body ${open ? 'is-open' : ''}"></div>`;
+  const head = wrap.querySelector('.fold-head');
+  const body = wrap.querySelector('.fold-body');
+  build(body);
+  head.onclick = () => {
+    head.classList.toggle('is-open');
+    body.classList.toggle('is-open');
+  };
+  return wrap;
+}
+
 /** 通用底部弹层 */
 function openSheet(title, bodyHTML, onSave) {
   const root = document.createElement('div');
@@ -1772,8 +1889,8 @@ function openFixedEditor(idx) {
 
   const del = root.querySelector('#x-del');
   if (del) {
-    del.onclick = () => {
-      if (!confirm('删除这条占用？')) return;
+    del.onclick = async () => {
+      if (!(await askConfirm({ title: '删除占用', text: '这条固定占用会被移除，课表之外的时间会重新参与排程。', ok: '删除', danger: true }))) return;
       store.fixed.splice(idx, 1);
       writeStore();
       rebuild();
@@ -1830,44 +1947,51 @@ function renderSettings() {
   };
   frag.append(semCard);
 
-  /* 时间模板 */
-  frag.append(el(`<div class="section-title">时间模板 · 本周可用 ${fmtDur(baseFree.reduce((a, b) => a + b, 0))}</div>`));
-  for (let d = 0; d < 7; d++) {
-    const wd = d + 1;
-    const segs = store.template[String(wd)] ?? [];
-    const row = el(`
-      <div class="set-row clickable">
-        <div>
-          <div class="set-title">${WD[wd]}</div>
-          <div class="set-sub">${segs.length ? segs.map(([a, b]) => `${toTime(a)}–${toTime(b)}`).join(' · ') : '不安排'}</div>
-        </div>
-        <span class="chev">›</span>
-      </div>`);
-    row.onclick = () => openTemplateEditor(wd);
-    frag.append(row);
-  }
+  /* 时间模板（折叠） */
+  const tplTotal = baseFree.reduce((a, b) => a + b, 0);
+  frag.append(
+    foldSection(`时间模板`, `本周可用 ${fmtDur(tplTotal)}`, false, (body) => {
+      for (let d = 0; d < 7; d++) {
+        const wd = d + 1;
+        const segs = store.template[String(wd)] ?? [];
+        const row = el(`
+          <div class="set-row clickable">
+            <div>
+              <div class="set-title">${WD[wd]}</div>
+              <div class="set-sub">${segs.length ? segs.map(([a, b]) => `${toTime(a)}–${toTime(b)}`).join(' · ') : '不安排'}</div>
+            </div>
+            <span class="chev">›</span>
+          </div>`);
+        row.onclick = () => openTemplateEditor(wd);
+        body.append(row);
+      }
+    })
+  );
 
-  /* 固定占用 */
-  frag.append(el(`<div class="section-title">固定占用 · ${store.fixed.length} 条</div>`));
-  store.fixed.forEach((b, i) => {
-    const when =
-      (b.kind === 'once' || b.date != null)
-        ? `${(b.date ?? '').slice(5)}`
-        : (b.weekdays ?? (b.weekday != null ? [b.weekday] : [])).map((x) => WD[x]).join('、');
-    const row = el(`
-      <div class="set-row clickable">
-        <div>
-          <div class="set-title">${b.label}</div>
-          <div class="set-sub">${when} ${toTime(b.start)}–${toTime(b.end)} · ${kindLabel(b)}${b.weeks ? ' · ' + b.weeks : ''}</div>
-        </div>
-        <span class="chev">›</span>
-      </div>`);
-    row.onclick = () => openFixedEditor(i);
-    frag.append(row);
-  });
-  const add = el(`<button class="ghost-btn" style="margin:2px 0 14px">＋ 添加固定占用（社团、会议、活动）</button>`);
-  add.onclick = () => openFixedEditor(null);
-  frag.append(add);
+  /* 固定占用（折叠） */
+  frag.append(
+    foldSection(`固定占用`, `${store.fixed.length} 条`, false, (body) => {
+      store.fixed.forEach((b, i) => {
+        const when =
+          (b.kind === 'once' || b.date != null)
+            ? `${(b.date ?? '').slice(5)}`
+            : (b.weekdays ?? (b.weekday != null ? [b.weekday] : [])).map((x) => WD[x]).join('、');
+        const row = el(`
+          <div class="set-row clickable">
+            <div>
+              <div class="set-title">${b.label}</div>
+              <div class="set-sub">${when} ${toTime(b.start)}–${toTime(b.end)} · ${kindLabel(b)}${b.weeks ? ' · ' + b.weeks : ''}</div>
+            </div>
+            <span class="chev">›</span>
+          </div>`);
+        row.onclick = () => openFixedEditor(i);
+        body.append(row);
+      });
+      const add = el(`<button class="ghost-btn" style="margin:2px 0 14px">＋ 添加固定占用（社团、会议、活动）</button>`);
+      add.onclick = () => openFixedEditor(null);
+      body.append(add);
+    })
+  );
 
   /* 主题 */
   frag.append(el(`<div class="section-title">主题</div>`));
@@ -1949,8 +2073,8 @@ function renderSettings() {
     exportText(`scheduler-${todayStr()}.json`, 'application/json', JSON.stringify(store, null, 2));
   };
   dataCard.querySelector('#do-import').onclick = () => pickImportFile();
-  dataCard.querySelector('#do-reset').onclick = () => {
-    if (!confirm('清空所有任务？课表和时间模板会保留。')) return;
+  dataCard.querySelector('#do-reset').onclick = async () => {
+    if (!(await askConfirm({ title: '清空任务', text: '所有任务和完成记录都会删掉，课表和时间模板保留。', ok: '清空', danger: true }))) return;
     store.tasks = [];
     store.log = [];
     store.pending = [];
@@ -2027,7 +2151,7 @@ function renderRecoveryBar() {
     exportText(`corrupt-${todayStr()}.json`, 'application/json', text);
   };
 
-  bar.querySelector('#rec-backup').onclick = () => {
+  bar.querySelector('#rec-backup').onclick = async () => {
     let bak = null;
     try {
       const rawBak = bridge && bridge.loadBackup ? bridge.loadBackup() : '';
@@ -2039,7 +2163,7 @@ function renderRecoveryBar() {
       toast('没有可用的备份');
       return;
     }
-    if (!confirm(`备份里有 ${bak.tasks.length} 件任务。用它覆盖当前（损坏的）存档？`)) return;
+    if (!(await askConfirm({ title: '从备份恢复', text: `备份里有 ${bak.tasks.length} 件任务，会覆盖当前那份读不出来的存档。`, ok: '恢复' }))) return;
     store = bak;
     storageLocked = false;
     recoverInfo = null;
@@ -2052,8 +2176,8 @@ function renderRecoveryBar() {
     toast('已从备份恢复');
   };
 
-  bar.querySelector('#rec-reset').onclick = () => {
-    if (!confirm('清空重来？损坏的存档会被覆盖，建议先「导出原始数据」。')) return;
+  bar.querySelector('#rec-reset').onclick = async () => {
+    if (!(await askConfirm({ title: '清空重来', text: '损坏的存档会被覆盖。如果还没导出原始数据，建议先导。', ok: '清空', danger: true }))) return;
     const fx = seed;
     const today = todayStr();
     store = {
@@ -2085,7 +2209,6 @@ function paint(opts = {}) {
   if (view.tab === 'now') {
     app.append(renderNow());
     app.append(renderPending());
-    app.append(renderChips());
   } else if (view.tab === 'week') {
     app.append(renderWeek());
   } else if (view.tab === 'tasks') {
