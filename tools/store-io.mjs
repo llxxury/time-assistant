@@ -51,8 +51,16 @@ if (mode === 'dump') {
     console.error('备份文件不是合法 JSON');
     process.exit(1);
   }
+  // 注意：atob 给的是「每字符=1字节」的二进制串，直接喂给 Java 桥会被当 UTF-8 重新编码，
+  // 中文就变成 é•¿æœŸé¡¹ç›®。必须先用 TextDecoder 按 UTF-8 解出来。
   const b64 = Buffer.from(JSON.stringify(parsed), 'utf8').toString('base64');
-  const out = evalInPage(`(()=>{const raw=atob('${b64}');return Cosmos.save(raw)?'ok':'fail';})()`).toString('utf8');
+  const out = evalInPage(
+    `(()=>{` +
+      `const bin=atob('${b64}');` +
+      `const bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));` +
+      `const raw=new TextDecoder('utf-8').decode(bytes);` +
+      `return Cosmos.save(raw)?'ok':'fail';})()`
+  ).toString('utf8');
   if (!/ok/.test(out)) {
     console.error('写回失败: ' + out);
     process.exit(1);

@@ -623,7 +623,10 @@ function renderDash() {
   const done = logOfDate(key);
   const doneMin = doneMinOf(done);
   const left = todayLeft(today);
-  const total = done.length + left.count;
+  // 分母是「今天一共排了几段」——包括已经过去、还没打勾的，
+  // 否则下午看会变成 0/0，像是今天本来就没安排。
+  const plannedToday = blocksOf(today).length;
+  const total = done.length + plannedToday;
   const pct = total ? Math.round((done.length / total) * 100) : 0;
 
   const card = el(`
@@ -641,7 +644,7 @@ function renderDash() {
       <div class="progress"><i style="width:${pct}%"></i></div>
       <div class="dash-foot">
         <span>进度 ${pct}%</span>
-        <span>${left.count ? `剩 ${left.count} 项 · 约 ${fmtDur(left.min)}` : '今天的安排都完成了'}</span>
+        <span>${left.count ? `剩 ${left.count} 项 · 约 ${fmtDur(left.min)}` : plannedToday ? `今天的 ${plannedToday} 段都过了，还没打勾` : '今天没有安排'}</span>
       </div>
     </section>`);
 
