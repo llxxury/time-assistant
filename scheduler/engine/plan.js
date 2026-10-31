@@ -3,6 +3,8 @@
 
 import { DAY, subtract, total, clip, fmtDur, fmtClock } from './time.js';
 
+const MAX_SPAN_DAYS = 120; // 硬上限：再远就不排了，防止任务没有截止日期时无限往外扩
+
 export const DEFAULT_RULES = {
   wImportance: 0.45, // 重要度权重（滑杆）
   lam: 1.8, // 紧急度饱和系数
@@ -40,7 +42,9 @@ export function parseWeeks(spec) {
 
 export function makeState(fixture, rules = {}) {
   const r = { ...DEFAULT_RULES, ...(fixture.rules || {}), ...rules };
-  const horizon = fixture.horizonDays ?? 7;
+  // 排程跨度：由调用方给（app 按最远截止日算），没给就退回 horizonDays。
+  // 这是「有多少排多少」的基础——不再写死 7 天。
+  const span = Math.max(7, Math.min(MAX_SPAN_DAYS, r.spanDays ?? fixture.horizonDays ?? 7));
 
   // 用户钉住的块：它们是「既定事实」，排程要绕开，也要从剩余量里扣掉。
   // 非法数据直接丢弃（宁可少一个 pin，也不要排出一张自相矛盾的时间轴）。
@@ -52,7 +56,7 @@ export function makeState(fixture, rules = {}) {
       Number.isFinite(p.start) &&
       Number.isFinite(p.end) &&
       p.day >= 0 &&
-      p.day < horizon &&
+      p.day < span &&
       p.start >= 0 &&
       p.end <= DAY &&
       p.end > p.start
@@ -63,6 +67,7 @@ export function makeState(fixture, rules = {}) {
 
   return {
     fixture,
+    span,
     rules: r,
     tasks: fixture.tasks.map((t) => ({
       ...t,
@@ -254,7 +259,8 @@ export function placeOneChunk(state, task) {
   if (task.chunks.length >= maxChunks) return null;
 
   // 只在排程窗口内落块；截止再远也只在未来 7 天里排
-  const limitDay = Math.min(task.deadlineDay ?? fixture.horizonDays - 1, fixture.horizonDays - 1);
+  const span = state.span ?? fixture.horizonDays ?? 7;
+  const limitDay = Math.min(task.deadlineDay ?? span - 1, span - 1);
   if (limitDay < 0) return null; // 已经过期，不排
 
   for (let d = 0; d <= limitDay; d++) {

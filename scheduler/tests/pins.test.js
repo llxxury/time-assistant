@@ -110,3 +110,25 @@ test('pin：钉一整天的那一天，其余任务自动去别的天', () => {
   assert.ok(t2.length > 0, 't2 应该被排到别的天');
   for (const p of t2) assert.notEqual(p.day, 0, 't2 不该排到被钉满的那天');
 });
+
+// ---- 「有多少排多少」：超过 7 天的任务也要被排进来 ----
+test('跨度：80 小时的任务会排到第 7 天之后', () => {
+  // 模板每天约 12h，按 0.85 留白约 10h/天；80h 塞不进 7 天，必须往后排
+  const big = task({
+    estMin: 4800,
+    deadlineDay: 20,
+    split: { mode: 'free', minChunkMin: 45, maxChunks: 40, maxChunksPerDay: 3 },
+  });
+  const st = makeState({ ...base([big]), pins: [] }, { spanDays: 21 });
+  plan(st);
+  assert.ok(st.placed.length >= 8, `应该排出 8 块以上，实际 ${st.placed.length}`);
+  const maxDay = Math.max(...st.placed.map((p) => p.day));
+  assert.ok(maxDay >= 7, `块应该排到第 7 天之后，实际最大 day=${maxDay}`);
+});
+
+test('跨度：不传 spanDays 时退化为 7 天（老行为不变）', () => {
+  const st = makeState({ ...base([task({ estMin: 2400, deadlineDay: 20 })]), pins: [] });
+  plan(st);
+  const maxDay = Math.max(...st.placed.map((p) => p.day));
+  assert.ok(maxDay <= 6, `没给跨度时应限制在 7 天内，实际 ${maxDay}`);
+});

@@ -100,6 +100,20 @@ if (first.state === 'empty') writeStore();
 
 /* ================= 派生 ================= */
 
+/**
+ * 排程跨度：跟着最远的截止日走，最多 120 天。
+ * 以前写死 7 天，20 天后交的任务只能靠压力评分体现，永远排不进来。
+ */
+function computeSpan() {
+  let maxD = 6; // 至少 7 天
+  for (const t of store.tasks) {
+    const d = t.deadlineDate ? dateToDay(t.deadlineDate) : t.deadlineDay;
+    if (Number.isFinite(d) && d > maxD) maxD = d;
+  }
+  return Math.min(120, maxD + 1);
+}
+const spanDays = () => store.spanDays || store.horizonDays || 7;
+
 const baseWd = () => new Date(Date.parse(store.startDate + 'T00:00:00Z')).getUTCDay() || 7;
 const wdOf = (d) => ((baseWd() - 1 + d) % 7) + 1;
 const dateOf = (d) =>
@@ -139,7 +153,8 @@ function rebuild() {
   }
 
   const resting = Boolean(store.restUntil && Date.now() < store.restUntil);
-  schedule = makeState(store, { nowDay: off, nowMinute: nm });
+  store.spanDays = computeSpan();
+  schedule = makeState(store, { nowDay: off, nowMinute: nm, spanDays: store.spanDays });
 
   if (resting && Array.isArray(store.lastPlan) && store.lastPlan.length) {
     // 休息中：冻结计划，不重排。用户刚做完一段，多出来的时间是奖励，不该被立刻填满。
@@ -156,7 +171,7 @@ function rebuild() {
   }
 
   baseFree = [];
-  for (let d = 0; d < store.horizonDays; d++) baseFree.push(total(freeOf(schedule, d)));
+  for (let d = 0; d < spanDays(); d++) baseFree.push(total(freeOf(schedule, d)));
   writeStore();
   pushReminders();
 }
@@ -322,7 +337,7 @@ function nowMinute() {
 
 const view = {
   tab: 'now',
-  preview: { live: nowDayIdx() >= 0 && nowDayIdx() < store.horizonDays, day: 0, minute: 19 * 60 },
+  preview: { live: nowDayIdx() >= 0 && nowDayIdx() < spanDays(), day: 0, minute: 19 * 60 },
 };
 
 const blocksOf = (d) =>
@@ -334,7 +349,7 @@ const blocksOf = (d) =>
 function clockOf() {
   if (view.preview.live) {
     const d = nowDayIdx();
-    return d >= 0 && d < store.horizonDays
+    return d >= 0 && d < spanDays()
       ? { day: d, minute: nowMinute(), live: true }
       : { day: null, minute: nowMinute(), live: true };
   }
@@ -624,7 +639,7 @@ function renderNow() {
     return card;
   }
 
-  if (day == null || day < 0 || day >= store.horizonDays) {
+  if (day == null || day < 0 || day >= spanDays()) {
     return el(`
       <section class="now-card">
         <div class="now-label"><span class="dot"></span>${live ? '实时' : '预览'}</div>
@@ -742,7 +757,7 @@ function renderWeek() {
   frag.append(
     el(`<div class="card" style="margin-bottom:12px">
           <div class="muted" style="font-size:13.5px">
-            未来 7 天可用 <b style="color:var(--ink)">${fmtDur(totalFree)}</b> ·
+            未来 ${spanDays()} 天可用 <b style="color:var(--ink)">${fmtDur(totalFree)}</b> ·
             最多排 <b style="color:var(--ink)">${fmtDur(usable)}</b> ·
             留白 ${fmtDur(totalFree - usable)}（${Math.round((1 - ratio) * 100)}%）
           </div>
@@ -768,9 +783,17 @@ function renderWeek() {
     );
   }
 
-  for (let d = 0; d < store.horizonDays; d++) {
+  let lastWeek = -1;
+  for (let d = 0; d < spanDays(); d++) {
     const fixed = fixedBlocksOn(schedule, d);
     const tasks = blocksOf(d);
+    // 第一周全部显示；之后只显示有内容的日子，避免跨度变长后出现几十张空卡片
+    if (d >= 7 && !fixed.length && !tasks.length) continue;
+    const week = Math.floor(d / 7);
+    if (week !== lastWeek && d >= 7) {
+      frag.append(el(`<div class="section-title">第 ${week + 1} 周</div>`));
+    }
+    lastWeek = week;
     const rows = [
       ...fixed.map((b) => ({ s: b.start, e: b.end, label: b.label, kind: 'fixed' })),
       ...tasks.map((b) => ({ s: b.start, e: b.end, label: b.task.title, kind: 'task', block: b })),
@@ -836,7 +859,7 @@ function checkPlanEdit(block, start, dur) {
 
   const day = block.day;
   const today = nowDayIdx();
-  if (day < 0 || day >= store.horizonDays) return '超出了排程窗口';
+  if (day < 0 || day >= spanDays()) return '超出了排程窗口';
   if (day < today) return '这一天已经过去了';
   if (day === today && start < nowMinute()) return '不能排到已经过去的时间';
 
@@ -1004,7 +1027,7 @@ function openForm(existing) {
   // 截止可以是远期目标，不限制在本周内
   const minDate = todayStr();
   const maxDate = addDays(todayStr(), 365);
-  const dDate = t.deadlineDate ?? dateOf(store.horizonDays - 1);
+  const dDate = t.deadlineDate ?? dateOf(6);
   const dTime = t.deadlineAt == null ? '23:59' : fmtClock(t.deadlineAt);
 
   const recent = [...new Set(store.tasks.map((x) => x.title))]
@@ -1166,7 +1189,7 @@ function openForm(existing) {
       };
     }
 
-    const dateStr = $('#f-date').value || dateOf(store.horizonDays - 1);
+    const dateStr = $('#f-date').value || dateOf(6);
     const [hh, mm] = ($('#f-time').value || '23:59').split(':').map(Number);
 
     const next = {
@@ -1568,7 +1591,7 @@ function buildDiagReport() {
   L.push('平台: ' + navigator.userAgent);
   L.push('屏幕: ' + window.innerWidth + '×' + window.innerHeight + ' dpr=' + (window.devicePixelRatio || 1));
   L.push('存储: ' + (bridge && bridge.load ? '原生文件' : 'localStorage'));
-  L.push('起点: ' + store.startDate + '  窗口: ' + store.horizonDays + ' 天  主题: ' + (store.theme || '-'));
+  L.push('起点: ' + store.startDate + '  窗口: ' + spanDays() + ' 天  主题: ' + (store.theme || '-'));
   L.push('任务: ' + (store.tasks || []).length + ' 件，完成记录 ' + (store.log || []).length + ' 条，待处理 ' + (store.pending || []).length + ' 段');
   L.push('课表: ' + (store.fixed || []).length + ' 条固定占用，学期' + (store.semester?.enabled === false ? '关' : '开'));
   L.push('数据大小: ' + Math.round(JSON.stringify(store).length / 1024) + ' KB');
@@ -2116,7 +2139,7 @@ function renderChips() {
     view.preview.live = true;
     paint();
   });
-  for (let d = 0; d < store.horizonDays; d++) {
+  for (let d = 0; d < spanDays(); d++) {
     mk(WD[wdOf(d)], !view.preview.live && view.preview.day === d, () => {
       view.preview = { live: false, day: d, minute: 19 * 60 };
       paint();
