@@ -1165,7 +1165,64 @@ const THEMES = [
   { key: 'teal', name: '青碧', a: '#0EA5A5', b: '#22D3EE' },
   { key: 'rose', name: '蔷薇', a: '#F0508A', b: '#FB7185' },
   { key: 'amber', name: '琥珀', a: '#F59E0B', b: '#FB923C' },
+  // 风景 / 动物：靠渐变 + 原创 SVG 剪影成立，不含任何图片
+  { key: 'coast', name: '海岸', a: '#2F88B8', b: '#8ECBE8', bg: 'linear-gradient(180deg,#eaf7ff 0%,#d3ecf8 40%,#a8d8ee 62%,#f2ead9 100%)', art: 'coast', ink: '#14384a' },
+  { key: 'snow', name: '雪原', a: '#6E93B8', b: '#A9C6DF', bg: 'linear-gradient(180deg,#f6fafd 0%,#e0ecf6 52%,#c6daea 100%)', art: 'snow', ink: '#1b2a38' },
+  { key: 'crane', name: '丹顶鹤', a: '#B3202A', b: '#D9736F', bg: 'linear-gradient(180deg,#fcfcfa 0%,#f1f0ec 58%,#e6e5df 100%)', art: 'crane', ink: '#2a2a26' },
+  { key: 'shiba', name: '柴犬', a: '#C96A1F', b: '#E79A4A', bg: 'linear-gradient(180deg,#fff8ef 0%,#f9e6cd 58%,#f0d5b0 100%)', art: 'shiba', ink: '#432a12' },
 ];
+
+/** 每个主题的原创剪影（纯 SVG 手绘路径，无版权问题）。越抽象越好认。 */
+const BG_ART = {
+  coast: `<svg viewBox="0 0 360 800" preserveAspectRatio="xMidYMax slice">
+      <path d="M0 600 Q60 588 120 596 T240 592 T360 598 V800 H0 Z" fill="currentColor" opacity=".10"/>
+      <path d="M0 660 Q70 646 140 656 T280 652 T360 658 V800 H0 Z" fill="currentColor" opacity=".14"/>
+      <circle cx="288" cy="150" r="24" fill="currentColor" opacity=".10"/>
+    </svg>`,
+  snow: `<svg viewBox="0 0 360 800" preserveAspectRatio="xMidYMax slice">
+      <path d="M0 620 Q80 556 152 614 T360 578 V800 H0 Z" fill="currentColor" opacity=".10"/>
+      <path d="M0 690 Q90 650 172 682 T360 660 V800 H0 Z" fill="currentColor" opacity=".14"/>
+      <circle cx="84" cy="210" r="2.5" fill="currentColor" opacity=".22"/>
+      <circle cx="128" cy="162" r="2" fill="currentColor" opacity=".22"/>
+      <circle cx="266" cy="228" r="2.5" fill="currentColor" opacity=".22"/>
+    </svg>`,
+  crane: `<svg viewBox="0 0 360 800" preserveAspectRatio="xMidYMax slice">
+      <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".16">
+        <path d="M96 660 q20 -14 40 -2 q20 -12 40 2"/>
+        <path d="M196 716 q16 -11 32 -2 q16 -9 32 2"/>
+        <path d="M256 640 q12 -9 24 -1 q12 -8 24 1"/>
+      </g>
+      <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".10">
+        <path d="M40 748 q14 -10 28 -1 q14 -9 28 1"/>
+        <path d="M300 770 q12 -8 24 -1 q12 -7 24 1"/>
+      </g>
+    </svg>`,
+  shiba: `<svg viewBox="0 0 360 800" preserveAspectRatio="xMidYMax slice">
+      <g fill="currentColor" opacity=".11">
+        <g transform="translate(150 640) rotate(-12)">
+          <ellipse cx="0" cy="14" rx="20" ry="16"/>
+          <ellipse cx="-24" cy="-6" rx="7" ry="9"/>
+          <ellipse cx="-8" cy="-14" rx="7" ry="9"/>
+          <ellipse cx="10" cy="-14" rx="7" ry="9"/>
+          <ellipse cx="26" cy="-6" rx="7" ry="9"/>
+        </g>
+        <g transform="translate(240 726) rotate(10) scale(.8)">
+          <ellipse cx="0" cy="14" rx="20" ry="16"/>
+          <ellipse cx="-24" cy="-6" rx="7" ry="9"/>
+          <ellipse cx="-8" cy="-14" rx="7" ry="9"/>
+          <ellipse cx="10" cy="-14" rx="7" ry="9"/>
+          <ellipse cx="26" cy="-6" rx="7" ry="9"/>
+        </g>
+        <g transform="translate(86 760) rotate(-20) scale(.62)">
+          <ellipse cx="0" cy="14" rx="20" ry="16"/>
+          <ellipse cx="-24" cy="-6" rx="7" ry="9"/>
+          <ellipse cx="-8" cy="-14" rx="7" ry="9"/>
+          <ellipse cx="10" cy="-14" rx="7" ry="9"/>
+          <ellipse cx="26" cy="-6" rx="7" ry="9"/>
+        </g>
+      </g>
+    </svg>`,
+};
 
 function mixHex(hex, ratio) {
   const n = parseInt(hex.slice(1), 16);
@@ -1183,6 +1240,22 @@ function applyTheme() {
   s.setProperty('--accent-2', t.b);
   s.setProperty('--tint', mixHex(t.a, 0.86));
   s.setProperty('--tint-2', mixHex(t.b, 0.9));
+
+  // 风景 / 动物主题：一层渐变 + 一个原创剪影（纯 CSS/SVG，零图片）
+  const bg = document.getElementById('bg');
+  const art = document.getElementById('bg-art');
+  if (t.bg) {
+    document.documentElement.dataset.scene = 'on';
+    if (bg) bg.style.background = t.bg;
+    if (art) {
+      art.innerHTML = BG_ART[t.art] || '';
+      art.style.color = t.ink || t.a;
+    }
+  } else {
+    document.documentElement.removeAttribute('data-scene');
+    if (bg) bg.style.background = '';
+    if (art) art.innerHTML = '';
+  }
 }
 
 /* ================= 「考卷」皮肤（实验，默认关） ================= */
@@ -1667,12 +1740,15 @@ function renderSettings() {
 
   /* 主题 */
   frag.append(el(`<div class="section-title">主题</div>`));
-  const themeCard = el(`<div class="card"><div class="dots" id="theme-dots">${THEMES.map(
-    (t) => `<button class="dot-btn ${t.key === (store.theme || 'indigo') ? 'is-on' : ''}"
-        data-k="${t.key}" style="background:linear-gradient(135deg,${t.a},${t.b})"></button>`
-  ).join('')}</div></div>`);
-  themeCard.querySelector('#theme-dots').onclick = (e) => {
-    const k = e.target?.dataset?.k;
+  const themeCard = el(`<div class="theme-grid" id="theme-dots">${THEMES.map(
+    (t) => `<button class="theme-tile ${t.key === (store.theme || 'indigo') ? 'is-on' : ''}" data-k="${t.key}">
+        <span class="tile-swatch" style="background:${t.bg || `linear-gradient(135deg,${t.a},${t.b})`}"></span>
+        <span class="tile-name">${t.name}</span>
+      </button>`
+  ).join('')}</div>`);
+  // 注意：themeCard 自己就是网格（id 在它身上），querySelector 只找子节点，所以直接绑
+  themeCard.onclick = (e) => {
+    const k = e.target?.closest?.('.theme-tile')?.dataset?.k;
     if (!k) return;
     store.theme = k;
     writeStore();

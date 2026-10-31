@@ -213,7 +213,13 @@ html[data-ui='exam'] .sticker.star {
 }
 
 /* ---------- 主题圆点在考卷模式下置灰 ---------- */
-html[data-ui='exam'] .dots {
+html[data-ui='exam'] .dots,
+html[data-ui='exam'] .theme-grid {
   opacity: 0.45;
   pointer-events: none;
+}
+
+/* 考卷模式下不显示风景背景层 */
+html[data-ui='exam'] #bg {
+  display: none;
 }
