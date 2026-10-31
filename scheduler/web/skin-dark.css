@@ -1,0 +1,147 @@
+/*
+ * 「深色」皮肤 —— 照设计稿 screen.png 采到的色值。
+ * 底色 #0C0E12、卡片 #181C25、主按钮 #B9C6D6、副文字 #818A95，
+ * 顶部一层 #2A3644 → #0D0D1B 的环境光。
+ *
+ * 和玻璃/考卷一样是外挂：打开才加载，关掉完全回到原样。
+ */
+
+html[data-ui='dark'] {
+  --accent: #b9c6d6 !important;
+  --accent-2: #7fa8c9 !important;
+  --tint: rgba(185, 198, 214, 0.14) !important;
+  --tint-2: rgba(127, 168, 201, 0.14) !important;
+  --ink: #f2f4f7 !important;
+  --ink-2: #c7ced8 !important;
+  --sub: #818a95 !important;
+  --glass: #181c25 !important;
+  --glass-line: rgba(255, 255, 255, 0.07) !important;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45) !important;
+  --r-card: 24px !important;
+  --r-btn: 16px !important;
+
+  background:
+    radial-gradient(120% 55% at 50% -8%, #2a3644 0%, #171c26 45%, #0c0e12 100%) !important;
+  background-attachment: fixed !important;
+}
+
+html[data-ui='dark'] body {
+  color: var(--ink);
+}
+
+/* 卡片 */
+html[data-ui='dark'] .card,
+html[data-ui='dark'] .now-card,
+html[data-ui='dark'] .day,
+html[data-ui='dark'] .pending,
+html[data-ui='dark'] .set-row,
+html[data-ui='dark'] .sheet {
+  background: #181c25 !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4) !important;
+}
+
+html[data-ui='dark'] .day.is-today {
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1.5px rgba(185, 198, 214, 0.5) !important;
+}
+
+/* 分段控件 */
+html[data-ui='dark'] .seg {
+  background: #11151a !important;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+html[data-ui='dark'] .seg-btn {
+  color: var(--sub);
+}
+html[data-ui='dark'] .seg-btn.is-on {
+  background: #2e333b !important;
+  color: #fff !important;
+}
+
+/* 按钮 */
+html[data-ui='dark'] .btn-primary {
+  background: linear-gradient(180deg, #c6d2df, #b3c1d2) !important;
+  color: #10131a !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+}
+html[data-ui='dark'] .btn-ghost,
+html[data-ui='dark'] .ghost-btn {
+  background: #242830 !important;
+  color: #e6eaf0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+html[data-ui='dark'] .ghost-btn.danger {
+  color: #ef6b7d !important;
+}
+html[data-ui='dark'] .btn-danger {
+  background: #c2415a !important;
+}
+
+/* 输入 */
+html[data-ui='dark'] input,
+html[data-ui='dark'] textarea,
+html[data-ui='dark'] select {
+  background: #11151a !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: var(--ink) !important;
+}
+html[data-ui='dark'] input::placeholder,
+html[data-ui='dark'] textarea::placeholder {
+  color: #5d6672;
+}
+
+/* 进度条 / 轴 */
+html[data-ui='dark'] .progress,
+html[data-ui='dark'] .sub-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+html[data-ui='dark'] .axis-bar {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35) !important;
+}
+html[data-ui='dark'] .axis-fixed {
+  background: rgba(255, 255, 255, 0.035) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* 主题卡 / 折叠 / 确认框 */
+html[data-ui='dark'] .theme-tile {
+  background: #1b2029 !important;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+html[data-ui='dark'] .theme-tile.is-on {
+  outline: 2px solid var(--ink);
+}
+html[data-ui='dark'] .confirm {
+  background: #1a1f28;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+html[data-ui='dark'] .sheet-mask {
+  background: rgba(0, 0, 0, 0.55);
+}
+html[data-ui='dark'] .toast {
+  background: #e6eaf0;
+  color: #10131a;
+}
+
+/* 深色下配色固定，主题卡置灰（和玻璃/考卷一致） */
+html[data-ui='dark'] .theme-grid {
+  opacity: 0.45;
+  pointer-events: none;
+}
+html[data-ui='dark'] #bg {
+  display: none;
+}
+
+/* 顶部工具条有自己的底色，单独覆盖 */
+html[data-ui='dark'] {
+  --bg: #0c0e12 !important;
+  --card: #181c25 !important;
+  --card-2: #11151a !important;
+}
+html[data-ui='dark'] .top {
+  background: linear-gradient(#0c0e12 78%, rgba(12, 14, 18, 0)) !important;
+}

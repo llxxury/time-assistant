@@ -1624,13 +1624,15 @@ function applyTheme() {
 
 const SKIN_EXAM = 'exam';
 const SKIN_GLASS = 'glass';
-const uiMode = () => (store.uiMode === SKIN_EXAM || store.uiMode === SKIN_GLASS ? store.uiMode : 'plain');
+const SKIN_DARK = 'dark';
+const uiMode = () =>
+  [SKIN_EXAM, SKIN_GLASS, SKIN_DARK].includes(store.uiMode) ? store.uiMode : 'plain';
 
 /**
  * 皮肤是「可拆卸的外挂」：打开时插一个 link，关掉时删掉。
  * 不加载 = 完全不影响原界面，连字节都不多。
  */
-const SKIN_FILES = { exam: 'skin-exam.css', glass: 'skin-glass.css' };
+const SKIN_FILES = { exam: 'skin-exam.css', glass: 'skin-glass.css', dark: 'skin-dark.css' };
 
 function applySkin() {
   const mode = uiMode();
@@ -2184,12 +2186,14 @@ function renderSettings() {
   const skinHint =
     skinMode === 'glass'
       ? '玻璃风格：浅色毛玻璃卡片 + 雾蓝强调色，主题色会被固定'
-      : skinMode === 'exam'
-        ? '考卷模式使用固定配色，关掉后主题颜色会恢复'
-        : '普通：跟随下方主题';
+      : skinMode === 'dark'
+        ? '深色风格：暗底 + 冷灰强调色，主题色会被固定'
+        : skinMode === 'exam'
+          ? '考卷模式使用固定配色，关掉后主题颜色会恢复'
+          : '普通：跟随下方主题';
   const skinCard = el(`<div class="card">
       <div class="chips" id="skin-chips">
-        ${[['plain', '普通'], ['glass', '玻璃'], ['exam', '考卷']]
+        ${[['plain', '普通'], ['glass', '玻璃'], ['dark', '深色'], ['exam', '考卷']]
           .map(([k, label]) => `<button class="chip ${skinMode === k ? 'is-on' : ''}" data-s="${k}">${label}</button>`)
           .join('')}
       </div>
@@ -2202,7 +2206,7 @@ function renderSettings() {
     writeStore();
     applySkin();
     paint();
-    toast(k === 'plain' ? '已恢复普通界面' : k === 'glass' ? '玻璃风格已开启' : '考卷模式已开启');
+    toast(k === 'plain' ? '已恢复普通界面' : k === 'glass' ? '玻璃风格已开启' : k === 'dark' ? '深色风格已开启' : '考卷模式已开启');
   };
   frag.append(skinCard);
 
