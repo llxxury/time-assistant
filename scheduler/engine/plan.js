@@ -27,7 +27,8 @@ export const DEFAULT_RULES = {
  * 返回 Set 或 null（null = 每周都有）
  */
 export function parseWeeks(spec) {
-  if (spec == null || spec === 'all') return null;
+  // 空字符串等于「每周都上」，不能当成第 0 周（Number('') 是 0，会静默变成永不上课）
+  if (spec == null || spec === '' || spec === 'all') return null;
   const [range, parity] = String(spec).split('/');
   const parts = range.includes('-') ? range.split('-').map(Number) : [Number(range), Number(range)];
   const [a, b] = parts;
@@ -89,6 +90,7 @@ export function makeState(fixture, rules = {}) {
     })),
     pins: pins.map((p) => ({ taskId: p.taskId, day: p.day, start: p.start, end: p.end })),
     placed: [],
+    _free: new Map(), // freeOf 的按天缓存，每次落块后清空
     trace: [],
     infeasible: [],
   };
@@ -186,13 +188,21 @@ function busyOn(state, d) {
 export function freeOf(state, d) {
   const { nowDay = 0, nowMinute = 0, minTailMin } = state.rules;
   if (d < nowDay) return []; // 整天都过去了
+
+  // 同一次排程里同一天会被反复问（每个任务每轮都要算容量），缓存一下
+  const cache = state._free;
+  const hit = cache && cache.get(d);
+  if (hit) return hit;
+
   const wd = weekdayOf(state, d);
   const base = state.fixture.template[String(wd)] ?? [];
   let out = subtract(base, busyOn(state, d));
   if (d === nowDay && nowMinute > 0) {
     out = out.map(([a, b]) => [Math.max(a, nowMinute), b]).filter(([a, b]) => b > a);
   }
-  return out.filter(([a, b]) => b - a >= minTailMin);
+  const res = out.filter(([a, b]) => b - a >= minTailMin);
+  if (cache) cache.set(d, res);
+  return res;
 }
 
 /** 只扣课表、不扣已排任务的空档 —— 用来算当天的「留白上限」 */
@@ -309,6 +319,7 @@ export function plan(state) {
   for (const p of state.pins || []) {
     state.placed.push({ ...p, pinned: true });
   }
+  state._free?.clear(); // pin 也是占用
 
   let guard = 0;
   while (guard++ < 500) {
@@ -343,6 +354,7 @@ export function plan(state) {
     pick.t.remain -= chunk.end - chunk.start;
     pick.t.chunks.push(chunk);
     state.placed.push({ ...chunk, taskId: pick.t.id });
+    state._free?.clear(); // 占用变了，freeOf 的按天缓存作废
     state.trace.push({ task: pick.t, chunk, s: pick.s, crisis: pick.crisis });
     if (pick.t.remain <= 0) pick.t.done = true;
   }
