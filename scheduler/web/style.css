@@ -15,7 +15,9 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/* 页面必须铺满视口，否则底部会露出 WebView 的默认白底 */
 html, body {
+  min-height: 100%;
   margin: 0;
   background: var(--bg);
   color: var(--ink);
@@ -29,7 +31,7 @@ html, body {
 body {
   max-width: 560px;
   margin: 0 auto;
-  padding: 0 16px calc(28px + env(safe-area-inset-bottom));
+  padding: 0 16px calc(28px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
   font-variant-numeric: tabular-nums;
 }
 
@@ -38,7 +40,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
-  padding: calc(10px + env(safe-area-inset-top)) 0 10px;
+  padding: calc(10px + var(--safe-top, env(safe-area-inset-top, 0px))) 0 10px;
   background: linear-gradient(var(--bg) 78%, rgba(255, 255, 255, 0));
 }
 
@@ -280,7 +282,7 @@ body {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(26px + env(safe-area-inset-bottom));
+  bottom: calc(26px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
   transform: translate(-50%, 14px);
   background: rgba(20, 23, 31, 0.92);
   color: #fff;
@@ -421,7 +423,7 @@ body {
 .sheet-save { color: var(--accent); font-weight: 700; }
 
 .sheet-body {
-  padding: 16px 16px calc(26px + env(safe-area-inset-bottom));
+  padding: 16px 16px calc(26px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
   overflow-y: auto;
 }
 
@@ -1243,4 +1245,14 @@ html[data-scene] body {
 .dash-bars .db.is-today span {
   color: var(--accent);
   font-weight: 600;
+}
+
+
+/* 深色/玻璃皮肤的渐变不要用 fixed（Android WebView 上会重绘异常） */
+html[data-ui='dark'],
+html[data-ui='glass'] {
+  background-attachment: scroll !important;
+}
+body {
+  min-height: 100vh;
 }

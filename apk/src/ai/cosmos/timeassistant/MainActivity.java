@@ -41,6 +41,10 @@ public class MainActivity extends Activity {
         setTheme(android.R.style.Theme_Material_Light_NoActionBar);
         super.onCreate(b);
 
+        // 允许 chrome://inspect 调试。某些 ROM 会剥掉 manifest 里的 debuggable，
+        // 所以不能靠 FLAG_DEBUGGABLE 判断；只有插着 USB 调试才可能被连上。
+        WebView.setWebContentsDebuggingEnabled(true);
+
         web = new WebView(this);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -83,7 +87,31 @@ public class MainActivity extends Activity {
 
         setContentView(web, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // 铺满整屏：内容画到状态栏和导航栏底下，让 CSS 的 safe-area 去避让
+        if (Build.VERSION.SDK_INT >= 30) {
+            getWindow().setDecorFitsSystemWindows(false);
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(
+                    android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        }
+        getWindow().setStatusBarColor(android.graphics.Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(android.graphics.Color.TRANSPARENT);
         web.loadUrl("http://" + HOST + "/web/index.html");
+
+        // WebView 读不到 env(safe-area-inset-*)，把系统栏高度喂给 CSS
+        web.postDelayed(new Runnable() {
+            public void run() {
+                if (web != null) web.evaluateJavascript(buildInsetsScript(), null);
+            }
+        }, 400);
+        web.postDelayed(new Runnable() {
+            public void run() {
+                if (web != null) web.evaluateJavascript(buildInsetsScript(), null);
+            }
+        }, 1600);
 
         if (Build.VERSION.SDK_INT >= 33) {
             if (checkSelfPermission("android.permission.POST_NOTIFICATIONS")
@@ -159,6 +187,23 @@ public class MainActivity extends Activity {
         });
     }
 
+    /** 把状态栏 / 导航栏高度写进 CSS 变量，页面用它做安全区避让 */
+    private String buildInsetsScript() {
+        int top = 0;
+        int bottom = 0;
+        try {
+            android.content.res.Resources r = getResources();
+            int idTop = r.getIdentifier("status_bar_height", "dimen", "android");
+            if (idTop > 0) top = r.getDimensionPixelSize(idTop);
+            int idNav = r.getIdentifier("navigation_bar_height", "dimen", "android");
+            if (idNav > 0) bottom = r.getDimensionPixelSize(idNav);
+        } catch (Exception e) {
+        }
+        float d = getResources().getDisplayMetrics().density;
+        return "document.documentElement.style.setProperty('--safe-top','" + (top / d) + "px');"
+                + "document.documentElement.style.setProperty('--safe-bottom','" + (bottom / d) + "px');";
+    }
+
     public class Bridge {
         /**
          * 复制到剪贴板。WebView 里 navigator.clipboard 不可用（appassets.local 不是安全上下文），
@@ -209,6 +254,71 @@ public class MainActivity extends Activity {
                 return f.getAbsolutePath();
             } catch (Exception e) {
                 return "";
+            }
+        }
+        /** 导出二进制（base64）：分享图片用。落盘方式和 exportFile 一致，只是先解码 */
+        @JavascriptInterface
+        public String exportBase64(String name, String mime, String b64) {
+            try {
+                String safe = name == null ? "share.png" : name.replaceAll("[\\\\/:*?\"<>|]", "_");
+                byte[] bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT);
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues v = new ContentValues();
+                    v.put(MediaStore.MediaColumns.DISPLAY_NAME, safe);
+                    v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+                    v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES);
+                    Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+                    if (uri == null) return "";
+                    java.io.OutputStream os = getContentResolver().openOutputStream(uri);
+                    if (os == null) return "";
+                    os.write(bytes);
+                    os.close();
+                    return uri.toString();
+                }
+                File dir = new File(getExternalFilesDir(null), "exports");
+                if (!dir.exists() && !dir.mkdirs()) return "";
+                File f = new File(dir, safe);
+                FileOutputStream out = new FileOutputStream(f);
+                out.write(bytes);
+                out.close();
+                return f.getAbsolutePath();
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        /**
+         * 告诉原生当前界面底色：涂窗口/WebView 背景，避免滚动时露出白底；
+         * 并按亮度切换状态栏、导航栏图标的明暗。
+         */
+        @JavascriptInterface
+        public void setChrome(final String hex) {
+            try {
+                final int c = android.graphics.Color.parseColor(hex);
+                int lum = (int) (0.299 * android.graphics.Color.red(c)
+                        + 0.587 * android.graphics.Color.green(c)
+                        + 0.114 * android.graphics.Color.blue(c));
+                final boolean dark = lum < 140;
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        getWindow().getDecorView().setBackgroundColor(c);
+                        if (web != null) web.setBackgroundColor(c);
+                        if (Build.VERSION.SDK_INT >= 30) {
+                            android.view.WindowInsetsController ic = getWindow().getInsetsController();
+                            if (ic != null) {
+                                int bars = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                                        | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                                ic.setSystemBarsAppearance(dark ? 0 : bars, bars);
+                            }
+                        } else {
+                            int vis = getWindow().getDecorView().getSystemUiVisibility();
+                            int flags = android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                                    | android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                            getWindow().getDecorView().setSystemUiVisibility(dark ? (vis & ~flags) : (vis | flags));
+                        }
+                    }
+                });
+            } catch (Exception e) {
             }
         }
 

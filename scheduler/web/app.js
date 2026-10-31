@@ -858,6 +858,9 @@ function renderWeek() {
     paint();
   };
   frag.append(modeBar);
+  const shareBar = el(`<div style="margin:-4px 0 12px"><button class="ghost-btn" id="plan-share" style="width:auto;padding:0 16px">分享图片</button></div>`);
+  shareBar.querySelector('#plan-share').onclick = () => sharePlanImage();
+  frag.append(shareBar);
 
   if (view.planMode === 'axis') {
     renderAxisInto(frag);
@@ -1073,6 +1076,134 @@ function openBlockEditor(block) {
 }
 
 
+
+/* ================= 分享为图片 ================= */
+
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+function ellipsis(g, text, maxW) {
+  let t = text;
+  while (t.length > 1 && g.measureText(t).width > maxW) t = t.slice(0, -1);
+  return t === text ? text : t + '…';
+}
+
+/** 把未来 7 天画成一张长图，返回 dataURL */
+function buildShareImage() {
+  const days = Math.min(7, spanDays());
+  const W = 1080;
+  const rows = [];
+  for (let d = 0; d < days; d++) rows.push({ d, blocks: blocksOf(d).slice(0, 4), more: Math.max(0, blocksOf(d).length - 4) });
+  const H = 300 + rows.reduce((s2, r) => s2 + 120 + r.blocks.length * 64, 0) + 140;
+
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = Math.max(1200, H);
+  const g = c.getContext('2d');
+
+  const grad = g.createLinearGradient(0, 0, W, c.height);
+  grad.addColorStop(0, '#f6fdf9');
+  grad.addColorStop(0.5, '#e8f5f5');
+  grad.addColorStop(1, '#d3e8f1');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, W, c.height);
+
+  g.fillStyle = '#17323e';
+  g.font = '700 62px system-ui, "Microsoft YaHei", sans-serif';
+  g.fillText('我的这一周', 72, 132);
+  g.font = '400 30px system-ui, "Microsoft YaHei", sans-serif';
+  g.fillStyle = '#6e8c97';
+  g.fillText(`${dateOf(0)} — ${dateOf(days - 1)}`, 72, 186);
+
+  let y = 240;
+  for (const { d, blocks, more } of rows) {
+    y += 34; // 每天之间留出呼吸空间
+    // 日期行
+    g.fillStyle = '#17323e';
+    g.font = '700 34px system-ui, "Microsoft YaHei", sans-serif';
+    g.fillText(`${WD[wdOf(d)]}  ${dateOf(d).slice(5)}`, 72, y);
+    g.fillStyle = '#9fb4bd';
+    g.font = '400 26px system-ui, sans-serif';
+    const used = blocks.reduce((s2, b) => s2 + (b.end - b.start), 0);
+    g.fillText(used ? fmtDur(used) : '空', W - 72 - g.measureText(used ? fmtDur(used) : '空').width, y);
+    y += 34;
+
+    if (!blocks.length) {
+      g.fillStyle = '#c3d3d9';
+      g.font = '400 26px system-ui, "Microsoft YaHei", sans-serif';
+      g.fillText('没有安排', 88, y + 34);
+      y += 92;
+      continue;
+    }
+
+    for (const b of blocks) {
+      const yy = y + 8;
+      roundRect(g, 72, yy, W - 144, 52, 16);
+      g.fillStyle = 'rgba(255,255,255,0.72)';
+      g.fill();
+      g.fillStyle = taskColor(b.taskId);
+      roundRect(g, 84, yy + 16, 8, 20, 4);
+      g.fill();
+      g.fillStyle = '#17323e';
+      g.font = '600 27px system-ui, "Microsoft YaHei", sans-serif';
+      g.fillText(ellipsis(g, b.task.title, 520), 108, yy + 35);
+      g.fillStyle = '#6e8c97';
+      g.font = '400 24px system-ui, sans-serif';
+      const when = `${fmtClock(b.start)}–${fmtClock(b.end)}`;
+      g.fillText(when, W - 96 - g.measureText(when).width, yy + 34);
+      y += 62;
+    }
+    if (more) {
+      g.fillStyle = '#9fb4bd';
+      g.font = '400 24px system-ui, "Microsoft YaHei", sans-serif';
+      g.fillText(`还有 ${more} 段`, 96, y + 26);
+      y += 40;
+    }
+    y += 44;
+  }
+
+  g.fillStyle = '#9fb4bd';
+  g.font = '400 24px system-ui, sans-serif';
+  g.fillText('time-assistant · 离线排程', 72, c.height - 56);
+  return c.toDataURL('image/png');
+}
+
+function sharePlanImage() {
+  if (!store.tasks.length) return toast('还没有任务，没什么可分享的');
+  let dataUrl;
+  try {
+    dataUrl = buildShareImage();
+  } catch (e) {
+    return toast('生成图片失败');
+  }
+  const b64 = dataUrl.split(',')[1];
+  const name = `time-assistant-${todayStr()}.png`;
+
+  if (bridge && bridge.exportBase64) {
+    const uri = bridge.exportBase64(name, 'image/png', b64);
+    if (!uri) return toast('保存失败');
+    if (bridge.shareUri) {
+      bridge.shareUri(uri, 'image/png', '分享这一周');
+      toast('已生成，选择要发到哪里');
+    } else {
+      toast('已保存到相册');
+    }
+    return;
+  }
+  // 浏览器里直接下载
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = name;
+  a.click();
+  toast('已下载图片');
+}
 
 /* ================= 计划 · 时间轴视图 ================= */
 // 纯渲染：按当天内容算区间，块高=时长，竖线=小时，红线=现在。
@@ -1734,6 +1865,17 @@ const uiMode = () =>
  */
 const SKIN_FILES = { exam: 'skin-exam.css', glass: 'skin-glass.css', dark: 'skin-dark.css' };
 
+/** 界面底色，交给原生去涂状态栏和导航栏 */
+const CHROME_BG = { plain: '#ffffff', glass: '#f4fbf7', dark: '#0c0e12', exam: '#fbfaf6' };
+
+function syncChrome() {
+  const b = typeof bridge !== 'undefined' ? bridge : null;
+  if (!b || !b.setChrome) return;
+  try {
+    b.setChrome(CHROME_BG[uiMode()] || CHROME_BG.plain);
+  } catch (e) {}
+}
+
 function applySkin() {
   const mode = uiMode();
   document.documentElement.dataset.ui = mode === 'plain' ? '' : mode;
@@ -1751,6 +1893,7 @@ function applySkin() {
       link.remove();
     }
   }
+  syncChrome();
 }
 
 /** 贴纸：绝对定位的装饰，pointer-events:none，不占布局。位置贴着卡片边缘，别压按钮 */
@@ -2458,6 +2601,7 @@ document.addEventListener('touchend', () => {
     return;
   }
   const dx = swipe.dx;
+  swipeDx = dx;
   const i = TAB_ORDER.indexOf(view.tab);
   const dir = dx < 0 ? 1 : -1;
   const next = TAB_ORDER[i + dir];
@@ -2474,32 +2618,35 @@ document.addEventListener('touchcancel', () => {
 });
 
 function springBack() {
-  app.style.transition = 'transform .18s ease-out';
-  app.style.transform = 'translateX(0)';
-  setTimeout(() => {
-    app.style.transition = '';
-  }, 200);
+  // 用 WAAPI 而不是 transition：动画结束自动回到原值，不会留下位移
+  if (!app.animate) {
+    app.style.transform = '';
+    return;
+  }
+  app.animate([{ transform: `translateX(${swipeDx}px)` }, { transform: 'translateX(0)' }], {
+    duration: 160,
+    easing: 'ease-out',
+  });
+  app.style.transform = '';
 }
+
+let swipeDx = 0;
 
 /** dir: 1 = 往左滑（下一页），-1 = 往右滑（上一页） */
 function slideTo(tab, dir) {
-  const w = app.offsetWidth || window.innerWidth;
-  app.style.transition = 'transform .2s cubic-bezier(.2,.7,.3,1)';
-  app.style.transform = `translateX(${-dir * w}px)`;
-  setTimeout(() => {
-    view.tab = tab;
-    paint();
-    window.scrollTo({ top: 0 });
-    app.style.transition = 'none';
-    app.style.transform = `translateX(${dir * w}px)`;
-    requestAnimationFrame(() => {
-      app.style.transition = 'transform .2s cubic-bezier(.2,.7,.3,1)';
-      app.style.transform = 'translateX(0)';
-      setTimeout(() => {
-        app.style.transition = '';
-      }, 240);
-    });
-  }, 190);
+  app.style.transform = ''; // 先把拖动时的位移清掉
+  view.tab = tab;
+  paint();
+  window.scrollTo({ top: 0 });
+  if (!app.animate) return;
+  // 新页面从一侧轻轻滑入。动画只影响本次绘制，结束时自动归零
+  app.animate(
+    [
+      { transform: `translateX(${dir * 40}px)`, opacity: 0.35 },
+      { transform: 'translateX(0)', opacity: 1 },
+    ],
+    { duration: 190, easing: 'cubic-bezier(.2,.7,.3,1)' }
+  );
 }
 /* ================= 主渲染 ================= */
 
