@@ -34,6 +34,7 @@ public class MainActivity extends Activity {
     private static final String HOST = "appassets.local";
     private static final int REQ_PICK = 1001;
     private static final int REQ_RING = 1002;
+    private static final int REQ_RING_FILE = 1003;
     private String pendingImport = null;
     private WebView web;
 
@@ -161,6 +162,22 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == REQ_RING_FILE) {
+            if (res == RESULT_OK && data != null && data.getData() != null) {
+                String stored = Reminder.importSound(this, data.getData());
+                if (stored.length() > 0) {
+                    Reminder.setSoundPref(this, stored);
+                    if (web != null) {
+                        web.post(new Runnable() {
+                            public void run() {
+                                web.evaluateJavascript("window.__TA_SOUND && window.__TA_SOUND()", null);
+                            }
+                        });
+                    }
+                }
+            }
+            return;
+        }
         if (req == REQ_RING) {
             if (res == RESULT_OK && data != null) {
                 android.net.Uri picked = data.getParcelableExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
@@ -541,6 +558,46 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String getRingtoneName() {
             return Reminder.soundName(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public String getRingtone() {
+            return Reminder.soundPref(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public String listRingtones() {
+            return Reminder.listRingtones(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void previewRingtone(String uri) {
+            Reminder.playOnce(MainActivity.this, uri);
+        }
+
+        @JavascriptInterface
+        public void stopPreview() {
+            Reminder.stopPreview();
+        }
+
+        @JavascriptInterface
+        public String setRingtone(String uri) {
+            Reminder.stopPreview();
+            Reminder.setSoundPref(MainActivity.this, uri);
+            return Reminder.soundNameOf(MainActivity.this, uri);
+        }
+
+        /** 从文件管理器挑一个音频，复制进 App 目录 */
+        @JavascriptInterface
+        public void pickRingtoneFile() {
+            try {
+                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("audio/*");
+                startActivityForResult(i, REQ_RING_FILE);
+            } catch (Exception ex) {
+                android.util.Log.e("TA-ALARM", "pickRingtoneFile failed: " + ex, ex);
+            }
         }
 
         @JavascriptInterface

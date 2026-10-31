@@ -1445,6 +1445,105 @@ function checkManualSlot(taskId, day, start, end) {
   return null;
 }
 
+/** 系统铃声名长得像 AfricaAnimals_preview，收拾一下 */
+function prettyRingName(t) {
+  if (!t) return '未命名';
+  return String(t).replace(/_preview$/i, '').replace(/_/g, ' ').trim();
+}
+
+/** 选提示音：自己的列表 + 试听 + 从文件选 */
+function openRingtoneSheet() {
+  if (!bridge || !bridge.listRingtones) return toast('这个版本不支持换提示音');
+
+  let list = [];
+  try {
+    list = JSON.parse(bridge.listRingtones() || '[]');
+  } catch (e) {
+    list = [];
+  }
+  const cur = (bridge.getRingtone && bridge.getRingtone()) || '';
+
+  const rows = list
+    .map(
+      (x) => `<div class="ring-row ${x.uri === cur ? 'is-on' : ''}" data-uri="${x.uri}">
+        <span class="ring-radio"></span>
+        <span class="ring-title">${prettyRingName(x.title)}</span>
+        <button class="ring-play" data-play="${x.uri}" aria-label="试听">▶</button>
+      </div>`
+    )
+    .join('');
+
+  const host = document.createElement('div');
+  host.innerHTML = `
+    <div class="sheet-mask"></div>
+    <div class="sheet">
+      <div class="sheet-head">
+        <button class="sheet-cancel">关闭</button>
+        <div class="sheet-title">提示音</div>
+        <button class="sheet-save">确定</button>
+      </div>
+      <div class="sheet-body">
+        <div class="ring-row ${cur === '' ? 'is-on' : ''}" data-uri="">
+          <span class="ring-radio"></span>
+          <span class="ring-title">系统默认</span>
+          <button class="ring-play" data-play="" aria-label="试听">▶</button>
+        </div>
+
+        <div class="ring-row ring-file" data-file="1">
+          <span class="ring-radio">＋</span>
+          <span class="ring-title">从文件选择…</span>
+        </div>
+        <div class="footnote" style="margin:-4px 0 10px">
+          支持 mp3 / wav / ogg，会复制进 App 目录，之后离线也能播（最大 3 MB）。
+        </div>
+
+        <div class="section-title" style="margin-top:6px">系统铃声</div>
+        ${rows || '<div class="muted" style="font-size:13px">这台机器没有可选铃声</div>'}
+      </div>
+    </div>`;
+  document.body.append(host);
+  requestAnimationFrame(() => {
+    host.querySelector('.sheet')?.classList.add('is-on');
+    host.querySelector('.sheet-mask')?.classList.add('is-on');
+  });
+
+  let picked = cur;
+  const close = () => {
+    if (bridge.stopPreview) bridge.stopPreview();
+    host.querySelector('.sheet')?.classList.remove('is-on');
+    host.querySelector('.sheet-mask')?.classList.remove('is-on');
+    setTimeout(() => host.remove(), 200);
+  };
+
+  host.querySelector('.sheet-mask').onclick = close;
+  host.querySelector('.sheet-cancel').onclick = close;
+
+  host.querySelector('.sheet-body').onclick = (e) => {
+    const play = e.target.closest('[data-play]');
+    if (play) {
+      e.stopPropagation();
+      if (bridge.previewRingtone) bridge.previewRingtone(play.dataset.play);
+      return;
+    }
+    if (e.target.closest('[data-file]')) {
+      if (bridge.pickRingtoneFile) bridge.pickRingtoneFile();
+      return;
+    }
+    const row = e.target.closest('.ring-row');
+    if (!row || row.dataset.uri === undefined) return;
+    picked = row.dataset.uri;
+    [...host.querySelectorAll('.ring-row')].forEach((r) => r.classList.toggle('is-on', r === row));
+  };
+
+  host.querySelector('.sheet-save').onclick = () => {
+    const name = bridge.setRingtone ? bridge.setRingtone(picked) : '';
+    const el2 = document.getElementById('ring-name');
+    if (el2 && name) el2.textContent = name;
+    close();
+    toast('提示音已更新');
+  };
+}
+
 function openForm(existing) {
   const t = existing ?? {
     id: null,
@@ -2523,10 +2622,7 @@ function renderSettings() {
       </div>
       <div class="footnote">小米/红米这类系统常把第三方通知的声音和震动吃掉，开着更保险。会走闹钟音量。</div>
     </div>`);
-  notifyCard.querySelector('#ring-pick').onclick = () => {
-    if (bridge && bridge.pickRingtone) bridge.pickRingtone();
-    else toast('这个版本不支持换提示音');
-  };
+  notifyCard.querySelector('#ring-pick').onclick = () => openRingtoneSheet();
 
   notifyCard.querySelector('#strong-switch').onclick = (e) => {
     const next = !e.currentTarget.classList.contains('on');

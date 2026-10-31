@@ -92,6 +92,114 @@ public class Reminder {
         }
     }
 
+    /** 试听用的播放器，切歌时先停掉上一个 */
+    private static android.media.MediaPlayer preview;
+
+    /** 播放一段铃声（只播一次）。uri 可以是 content:// 或本地文件路径 */
+    static void playOnce(Context c, String uri) {
+        stopPreview();
+        try {
+            android.media.MediaPlayer mp = new android.media.MediaPlayer();
+            mp.setAudioAttributes(new android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build());
+            if (uri != null && uri.startsWith("file:")) {
+                mp.setDataSource(uri.substring(5));
+            } else if (uri != null && uri.length() > 0) {
+                mp.setDataSource(c, android.net.Uri.parse(uri));
+            } else {
+                mp.setDataSource(c, pickSound(c));
+            }
+            mp.setOnCompletionListener(new android.media.MediaPlayer.OnCompletionListener() {
+                public void onCompletion(android.media.MediaPlayer m) {
+                    try {
+                        m.release();
+                    } catch (Exception ignored) {
+                    }
+                }
+            });
+            mp.prepare();
+            mp.start();
+            preview = mp;
+        } catch (Exception ex) {
+            android.util.Log.e("TA-ALARM", "playOnce failed: " + ex, ex);
+        }
+    }
+
+    static void stopPreview() {
+        try {
+            if (preview != null) {
+                if (preview.isPlaying()) preview.stop();
+                preview.release();
+            }
+        } catch (Exception ignored) {
+        }
+        preview = null;
+    }
+
+    /** 系统里所有通知铃声：[{uri,title}] */
+    static String listRingtones(Context c) {
+        try {
+            android.media.RingtoneManager rm = new android.media.RingtoneManager(c);
+            rm.setType(android.media.RingtoneManager.TYPE_NOTIFICATION);
+            android.database.Cursor cur = rm.getCursor();
+            org.json.JSONArray arr = new org.json.JSONArray();
+            int i = 0;
+            while (cur != null && cur.moveToNext() && i < 40) {
+                android.net.Uri u = rm.getRingtoneUri(cur.getPosition());
+                String t = cur.getString(android.media.RingtoneManager.TITLE_COLUMN_INDEX);
+                if (u == null) continue;
+                org.json.JSONObject o = new org.json.JSONObject();
+                o.put("uri", u.toString());
+                o.put("title", t);
+                arr.put(o);
+                i++;
+            }
+            if (cur != null) cur.close();
+            return arr.toString();
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    /** 把用户挑的音频文件复制进 App 目录，之后离线也能播 */
+    static String importSound(Context c, android.net.Uri src) {
+        try {
+            java.io.InputStream in = c.getContentResolver().openInputStream(src);
+            if (in == null) return "";
+            java.io.File f = new java.io.File(c.getFilesDir(), "ringtone_custom");
+            java.io.FileOutputStream out = new java.io.FileOutputStream(f);
+            byte[] buf = new byte[8192];
+            int n;
+            int total = 0;
+            while ((n = in.read(buf)) > 0) {
+                total += n;
+                if (total > 3 * 1024 * 1024) break; // 别让一个音频撑爆
+                out.write(buf, 0, n);
+            }
+            out.close();
+            in.close();
+            return "file:" + f.getAbsolutePath();
+        } catch (Exception ex) {
+            android.util.Log.e("TA-ALARM", "importSound failed: " + ex, ex);
+            return "";
+        }
+    }
+
+    /** 给设置页显示的名字（本地文件就显示文件名） */
+    static String soundNameOf(Context c, String uri) {
+        if (uri == null || uri.length() == 0) return "系统默认";
+        if (uri.startsWith("file:")) return "自定义文件";
+        try {
+            android.media.Ringtone rt = android.media.RingtoneManager.getRingtone(c, android.net.Uri.parse(uri));
+            String t = rt == null ? null : rt.getTitle(c);
+            return t == null || t.length() == 0 ? "系统默认" : t;
+        } catch (Exception e) {
+            return "系统默认";
+        }
+    }
+
     /** 强提醒开关（用户设置，存在 prefs 里） */
     static boolean strongEnabled(Context c) {
         try {

@@ -1282,3 +1282,47 @@ html.is-swiping .seg {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
+
+/* ================= 提示音选择 ================= */
+.ring-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 6px;
+  border-bottom: 1px solid rgba(23, 28, 45, 0.06);
+  cursor: pointer;
+}
+.ring-row:last-child { border-bottom: 0; }
+.ring-row.is-on .ring-title { font-weight: 700; color: var(--accent); }
+.ring-radio {
+  width: 18px; height: 18px; flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1.5px solid rgba(23, 28, 45, 0.28);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--sub);
+}
+.ring-row.is-on .ring-radio {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 3px #fff;
+}
+.ring-row.ring-file .ring-radio { border-style: dashed; }
+.ring-title {
+  flex: 1;
+  font-size: 14px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ring-play {
+  flex: 0 0 auto;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(127, 168, 201, 0.16);
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ring-play:active { transform: scale(0.94); }
