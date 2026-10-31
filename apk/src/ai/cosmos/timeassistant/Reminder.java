@@ -15,30 +15,63 @@ import org.json.JSONObject;
 public class Reminder {
     static final String PREFS = "reminders";
     static final String KEY = "list";
-    static final String CHANNEL = "plan4"; // 换 id：通道创建后配置不可改，老通道是静音的
+    /**
+     * 通道 id 跟着「用户选的铃声」走。
+     *
+     * Android 的通道配置**创建后不可修改**，所以想让通道铃声跟用户选择一致，
+     * 只能每次换铃声就换一个新通道 id，再删掉旧的。
+     * 这里用铃声串派生：没选就是 plan_default，选了就是 plan_<短哈希>。
+     */
+    static String channelId(Context c) {
+        String s = soundPref(c);
+        if (s == null || s.length() == 0) return "plan_default";
+        // 自定义文件放在 App 私有目录，系统通知服务读不到，通道只能用默认音
+        if (s.startsWith("file:")) return "plan_file";
+        int h = s.hashCode();
+        return "plan_" + Integer.toHexString(h & 0x7fffffff);
+    }
+
+    /** 通道里能用的铃声：只有 content:// 的才交给系统播 */
+    static android.net.Uri channelSound(Context c) {
+        String s = soundPref(c);
+        if (s != null && s.startsWith("content:")) {
+            try {
+                return android.net.Uri.parse(s);
+            } catch (Exception ignored) {
+            }
+        }
+        return android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
+    }
 
     static void ensureChannel(Context c) {
         try {
             NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm == null) return;
 
-            // 老通道（没声音没震动）删掉，免得用户还留着
-            for (String old : new String[]{"plan", "plan2", "plan3"}) {
-                if (nm.getNotificationChannel(old) != null) nm.deleteNotificationChannel(old);
+            final String want = channelId(c);
+
+            // 清掉不用的旧通道，免得设置里堆一排「计划提醒」
+            try {
+                for (NotificationChannel ch : nm.getNotificationChannels()) {
+                    String id = ch.getId();
+                    if (id.startsWith("plan") && !id.equals(want)) {
+                        nm.deleteNotificationChannel(id);
+                    }
+                }
+            } catch (Exception ignored) {
             }
 
-            if (nm.getNotificationChannel(CHANNEL) == null) {
+            if (nm.getNotificationChannel(want) == null) {
                 NotificationChannel ch = new NotificationChannel(
-                        CHANNEL, "计划提醒", NotificationManager.IMPORTANCE_HIGH);
+                        want, "计划提醒", NotificationManager.IMPORTANCE_HIGH);
                 ch.setDescription("到点提醒该做哪一段");
-                // 关键：不显式设置的话，通道默认静音且不震动
                 ch.enableVibration(true);
                 ch.setVibrationPattern(new long[]{0, 350, 180, 350});
                 ch.enableLights(true);
                 ch.setLightColor(0xFF7FA8C9);
                 ch.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
                 ch.setSound(
-                        android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
+                        channelSound(c),
                         new android.media.AudioAttributes.Builder()
                                 .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
                                 .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -163,23 +196,61 @@ public class Reminder {
         }
     }
 
-    /** 把用户挑的音频文件复制进 App 目录，之后离线也能播 */
-    static String importSound(Context c, android.net.Uri src) {
+    /** 读完整个流，超过上限就放弃 */
+    private static byte[] readAll(java.io.InputStream in, int cap) {
         try {
-            java.io.InputStream in = c.getContentResolver().openInputStream(src);
-            if (in == null) return "";
-            java.io.File f = new java.io.File(c.getFilesDir(), "ringtone_custom");
-            java.io.FileOutputStream out = new java.io.FileOutputStream(f);
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
             byte[] buf = new byte[8192];
             int n;
             int total = 0;
             while ((n = in.read(buf)) > 0) {
                 total += n;
-                if (total > 3 * 1024 * 1024) break; // 别让一个音频撑爆
-                out.write(buf, 0, n);
+                if (total > cap) return null;
+                bos.write(buf, 0, n);
             }
-            out.close();
+            return bos.toByteArray();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    /** 把用户挑的音频文件复制进 App 目录，之后离线也能播 */
+    static String importSound(Context c, android.net.Uri src) {
+        try {
+            java.io.InputStream in = c.getContentResolver().openInputStream(src);
+            if (in == null) return "";
+            byte[] data = readAll(in, 3 * 1024 * 1024);
             in.close();
+            if (data == null || data.length == 0) return "";
+
+            // 同时放进系统媒体库：这样通知通道也能用它
+            // （系统通知服务读不到 App 私有目录，只认 content://）
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    android.content.ContentValues v = new android.content.ContentValues();
+                    v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "ta-ringtone");
+                    v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "audio/*");
+                    v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+                            android.os.Environment.DIRECTORY_NOTIFICATIONS);
+                    android.net.Uri u = c.getContentResolver()
+                            .insert(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, v);
+                    if (u != null) {
+                        java.io.OutputStream os = c.getContentResolver().openOutputStream(u);
+                        if (os != null) {
+                            os.write(data);
+                            os.close();
+                            return u.toString();
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                android.util.Log.e("TA-ALARM", "publish to MediaStore failed: " + ex, ex);
+            }
+
+            // 兜底：留在 App 目录，强提醒仍然能播
+            java.io.File f = new java.io.File(c.getFilesDir(), "ringtone_custom");
+            java.io.FileOutputStream out = new java.io.FileOutputStream(f);
+            out.write(data);
+            out.close();
             return "file:" + f.getAbsolutePath();
         } catch (Exception ex) {
             android.util.Log.e("TA-ALARM", "importSound failed: " + ex, ex);

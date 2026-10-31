@@ -23,7 +23,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
             Notification.Builder b = Build.VERSION.SDK_INT >= 26
-                    ? new Notification.Builder(c, Reminder.CHANNEL)
+                    ? new Notification.Builder(c, Reminder.channelId(c))
                     : new Notification.Builder(c);
 
             b.setContentTitle(title == null ? "该开始了" : title)
