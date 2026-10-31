@@ -579,9 +579,109 @@ window.addEventListener('unhandledrejection', (e) => {
 
 /* ================= 现在 ================= */
 
+/** 某一天的完成记录 */
+function logOfDate(dateStr) {
+  return (store.log || []).filter((x) => x.kind === 'done' && x.date === dateStr);
+}
+
+const doneMinOf = (list) => list.reduce((s, x) => s + (x.actualMin || x.minutes || 0), 0);
+
+/** 本周（周一起）每天的实际用时，外加上周合计用来对比 */
+function weekFocus() {
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7; // 周一 = 0
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+  const bars = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday.getTime() + i * 86400000);
+    const key = ymdLocal(d);
+    bars.push({ label: '一二三四五六日'[i], mins: doneMinOf(logOfDate(key)), today: i === dow });
+  }
+  let lastWeek = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday.getTime() - 7 * 86400000 + i * 86400000);
+    lastWeek += doneMinOf(logOfDate(ymdLocal(d)));
+  }
+  return { bars, lastWeek, thisWeek: bars.reduce((s, b) => s + b.mins, 0) };
+}
+
+/** 今天还剩多少：几段、多少分钟 */
+function todayLeft(day) {
+  const nm = nowMinute();
+  const list = blocksOf(day).filter((b) => b.end > nm);
+  const min = list.reduce((s, b) => s + Math.max(0, b.end - Math.max(b.start, nm)), 0);
+  return { count: list.length, min };
+}
+
+function renderDash() {
+  const today = nowDayIdx();
+  const key = todayStr();
+  const done = logOfDate(key);
+  const doneMin = doneMinOf(done);
+  const left = todayLeft(today);
+  const total = done.length + left.count;
+  const pct = total ? Math.round((done.length / total) * 100) : 0;
+
+  const card = el(`
+    <section class="dash">
+      <div class="dash-row">
+        <div class="dash-block">
+          <div class="dash-num">${done.length}<span>/ ${total} 项</span></div>
+          <div class="dash-label">今日完成</div>
+        </div>
+        <div class="dash-block right">
+          <div class="dash-num">${doneMin ? fmtDur(doneMin) : '—'}</div>
+          <div class="dash-label">专注时长</div>
+        </div>
+      </div>
+      <div class="progress"><i style="width:${pct}%"></i></div>
+      <div class="dash-foot">
+        <span>进度 ${pct}%</span>
+        <span>${left.count ? `剩 ${left.count} 项 · 约 ${fmtDur(left.min)}` : '今天的安排都完成了'}</span>
+      </div>
+    </section>`);
+
+  const wk = weekFocus();
+  const peak = Math.max(1, ...wk.bars.map((b) => b.mins));
+  const diff = wk.lastWeek > 0 ? Math.round(((wk.thisWeek - wk.lastWeek) / wk.lastWeek) * 100) : null;
+  const dist = el(`
+    <section class="dash">
+      <div class="dash-head">
+        <span>本周专注分布</span>
+        ${diff == null ? '<span class="dash-label">上周还没有记录</span>' : `<span class="dash-label">较上周 ${diff >= 0 ? '+' : ''}${diff}%</span>`}
+      </div>
+      <div class="dash-bars">
+        ${wk.bars
+          .map(
+            (b) => `<div class="db ${b.today ? 'is-today' : ''}">
+              <i style="height:${b.mins ? Math.max(10, Math.round((b.mins / peak) * 100)) : 4}%"></i>
+              <span>${b.label}</span>
+            </div>`
+          )
+          .join('')}
+      </div>
+    </section>`);
+
+  const frag = document.createDocumentFragment();
+  frag.append(card, dist);
+  return frag;
+}
+
 function renderNow() {
   const { day, minute, live } = clockOf();
 
+  // 只在看今天时显示仪表盘；翻到别的天没意义
+  if (live && day === nowDayIdx()) {
+    const wrap = document.createDocumentFragment();
+    wrap.append(renderDash());
+    wrap.append(renderNowBody(day, minute, live));
+    return wrap;
+  }
+  return renderNowBody(day, minute, live);
+}
+
+/** 「现在」页主体（原 renderNow 的其余部分） */
+function renderNowBody(day, minute, live) {
   // 休息中：刚完成一段，计划被冻结。这段时间的处置权交给用户。
   const restLeft = store.restUntil ? Math.ceil((store.restUntil - Date.now()) / 60000) : 0;
   if (restLeft > 0) {
