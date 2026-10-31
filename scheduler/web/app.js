@@ -586,23 +586,27 @@ function logOfDate(dateStr) {
 
 const doneMinOf = (list) => list.reduce((s, x) => s + (x.actualMin || x.minutes || 0), 0);
 
-/** 本周（周一起）每天的实际用时，外加上周合计用来对比 */
+/**
+ * 本周（周一起）每天的实际用时。
+ * 和上周对比要**同比**：本周一到今天 vs 上周一到上周同一天。
+ * 拿"半周"去比"整周"，周中看永远是暴跌。
+ */
 function weekFocus() {
   const now = new Date();
-  const dow = (now.getDay() + 6) % 7; // 周一 = 0
+  const dow = (now.getDay() + 6) % 7; // 周一 = 0，今天就是这一周的第几天
   const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
   const bars = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday.getTime() + i * 86400000);
-    const key = ymdLocal(d);
-    bars.push({ label: '一二三四五六日'[i], mins: doneMinOf(logOfDate(key)), today: i === dow });
+    bars.push({ label: '一二三四五六日'[i], mins: doneMinOf(logOfDate(ymdLocal(d))), today: i === dow });
   }
+  const thisWeek = bars.slice(0, dow + 1).reduce((sum, b) => sum + b.mins, 0);
   let lastWeek = 0;
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i <= dow; i++) {
     const d = new Date(monday.getTime() - 7 * 86400000 + i * 86400000);
     lastWeek += doneMinOf(logOfDate(ymdLocal(d)));
   }
-  return { bars, lastWeek, thisWeek: bars.reduce((s, b) => s + b.mins, 0) };
+  return { bars, lastWeek, thisWeek, total: bars.reduce((sum, b) => sum + b.mins, 0) };
 }
 
 /** 今天还剩多少：几段、多少分钟 */
@@ -643,12 +647,14 @@ function renderDash() {
 
   const wk = weekFocus();
   const peak = Math.max(1, ...wk.bars.map((b) => b.mins));
-  const diff = wk.lastWeek > 0 ? Math.round(((wk.thisWeek - wk.lastWeek) / wk.lastWeek) * 100) : null;
+  // 上周同期不足 30 分钟就不比：基数太小，百分比既夸张又没意义
+  const diff =
+    wk.lastWeek >= 30 ? Math.round(((wk.thisWeek - wk.lastWeek) / wk.lastWeek) * 100) : null;
   const dist = el(`
     <section class="dash">
       <div class="dash-head">
         <span>本周专注分布</span>
-        ${diff == null ? '<span class="dash-label">上周还没有记录</span>' : `<span class="dash-label">较上周 ${diff >= 0 ? '+' : ''}${diff}%</span>`}
+        ${diff == null ? '<span class="dash-label">上周同期记录太少</span>' : `<span class="dash-label">较上周同期 ${diff >= 0 ? '+' : ''}${diff}%</span>`}
       </div>
       <div class="dash-bars">
         ${wk.bars
@@ -659,6 +665,10 @@ function renderDash() {
             </div>`
           )
           .join('')}
+      </div>
+      <div class="dash-foot">
+        <span>本周 ${fmtDur(wk.thisWeek)}</span>
+        <span>上周同期 ${wk.lastWeek ? fmtDur(wk.lastWeek) : '无记录'}</span>
       </div>
     </section>`);
 
