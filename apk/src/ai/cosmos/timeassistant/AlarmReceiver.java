@@ -11,6 +11,7 @@ import android.os.Build;
 public class AlarmReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context c, Intent it) {
+        android.util.Log.i("TA-ALARM", "onReceive entered, id=" + it.getStringExtra("id") + " strong=" + Reminder.strongEnabled(c));
         String id = it.getStringExtra("id");
         String title = it.getStringExtra("title");
         String text = it.getStringExtra("text");
@@ -50,7 +51,16 @@ public class AlarmReceiver extends BroadcastReceiver {
             // 强提醒：某些 ROM（MIUI）不肯给第三方通知放声音/震动，
             // 这里直接用闹钟流自己播一次，不依赖通知通道。
             if (Reminder.strongEnabled(c)) {
-                Reminder.playStrong(c);
+                // 交给前台服务去放：接收器返回后进程会被冻结，直接在这里放会断
+                Intent svc = new Intent(c, PlayService.class);
+                try {
+                    // 用普通 startService：闹钟广播会给 App 约 10 秒临时白名单，够放完。
+                    // 前台服务在 MIUI 后台会被拒（ForegroundServiceDidNotStartInTimeException）。
+                    c.startService(svc);
+                } catch (Exception ex) {
+                    android.util.Log.e("TA-ALARM", "start PlayService failed: " + ex, ex);
+                    Reminder.playStrong(c); // 起不来就退回原地放
+                }
             }
         } catch (Exception ex) {
             android.util.Log.e("TA-ALARM", "notify failed: " + ex, ex);
