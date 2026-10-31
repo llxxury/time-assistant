@@ -1015,7 +1015,8 @@ html[data-scene] body {
 }
 
 /* ================= 计划 · 时间轴视图 ================= */
-/* 轴视图不要卡片外壳：只有轴线和事件块 */
+/* 只有卡片，没有网格线 */
+
 .axis-day {
   background: none;
   border: 0;
@@ -1033,104 +1034,110 @@ html[data-scene] body {
   align-items: baseline;
   gap: 8px;
   margin: 0 0 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(23, 28, 45, 0.1);
-}
-.axis-day.is-today .day-head {
-  border-bottom-color: var(--accent);
+  padding: 0;
+  border: 0;
 }
 .axis-day.is-today .day-name {
   color: var(--accent);
 }
+
 .axis {
   position: relative;
-  margin-left: 46px;
+  margin-left: 0;
 }
-.axis-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: rgba(23, 28, 45, 0.08);
-  pointer-events: none;
-}
-.axis-hour {
-  position: absolute;
-  left: -46px;
-  width: 40px;
-  text-align: right;
-  transform: translateY(-50%);
-  font-size: 11px;
-  color: var(--sub);
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
-}
-.axis-fixed {
-  position: absolute;
-  left: 0;
-  right: 0;
-  border-radius: 8px;
-  background: rgba(23, 28, 45, 0.07);
-  color: var(--sub);
-  font-size: 11.5px;
-  padding: 4px 8px;
-  overflow: hidden;
-  pointer-events: none;
-}
+
+/* 事件卡：和页面卡片同样的毛玻璃材质 */
 .axis-bar {
   position: absolute;
   left: 0;
   right: 0;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--bar) 26%, transparent);
-  border-left: 3px solid var(--bar);
-  padding: 4px 9px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.62);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  backdrop-filter: blur(18px) saturate(1.25);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 10px 26px rgba(26, 66, 86, 0.1);
+  padding: 10px 13px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
   cursor: pointer;
 }
 .axis-bar:active {
-  filter: brightness(0.97);
+  transform: scale(0.995);
+  filter: brightness(0.98);
 }
 .axis-bar b {
-  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.axis-bar .dot-c {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bar);
+  flex: 0 0 auto;
+}
 .axis-bar span {
-  font-size: 10.5px;
+  font-size: 11.5px;
   color: var(--sub);
   font-variant-numeric: tabular-nums;
+  padding-left: 15px;
 }
+
+/* 课表 / 固定占用：同一材质的弱化版 */
+.axis-fixed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.34);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  color: var(--sub);
+  font-size: 12px;
+  padding: 8px 12px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 现在时刻：透明毛玻璃三角（不是线条） */
 .axis-now {
   position: absolute;
-  left: -6px;
-  right: 0;
+  left: -3px;
   height: 0;
-  border-top: 2px solid #e0553f;
   pointer-events: none;
-  z-index: 3;
+  z-index: 4;
 }
 .axis-now i {
   position: absolute;
   left: 0;
-  top: -4px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #e0553f;
+  top: -10px;
+  width: 20px;
+  height: 20px;
+  display: block;
+  background: rgba(255, 255, 255, 0.5);
+  -webkit-backdrop-filter: blur(10px) saturate(1.6);
+  backdrop-filter: blur(10px) saturate(1.6);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  filter: drop-shadow(0 2px 6px rgba(20, 50, 70, 0.22));
 }
-.axis-now span {
-  position: absolute;
-  left: -46px;
-  top: -7px;
-  width: 38px;
-  text-align: right;
-  font-size: 10px;
-  color: #e0553f;
+.axis-now i {
+  background: color-mix(in srgb, var(--accent) 42%, rgba(255, 255, 255, 0.55));
+}
+.day-now {
+  margin-left: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
 }

@@ -820,6 +820,7 @@ function renderWeek() {
       ...tasks.map((b) => ({ s: b.start, e: b.end, label: b.task.title, kind: 'task', block: b })),
     ];
     rows.sort((a, b) => a.s - b.s || a.e - b.e);
+    const now = nowMinute();
     const isToday = view.preview.live && d === nowDayIdx();
 
     const card = el(`
@@ -827,6 +828,7 @@ function renderWeek() {
         <div class="day-head">
           <span class="day-name">${WD[wdOf(d)]}</span>
           <span class="day-date">${dateOf(d)}</span>
+          ${isToday ? `<span class="day-now">现在 ${fmtClock(now)}</span>` : ""}
           <span class="day-free">可用 ${fmtDur(baseFree[d])}</span>
         </div>
         ${rows.length ? '' : '<div class="row-empty">空闲</div>'}
@@ -1025,20 +1027,13 @@ function renderAxisInto(frag) {
         <div class="day-head">
           <span class="day-name">${WD[wdOf(d)]}</span>
           <span class="day-date">${dateOf(d)}</span>
+          ${isToday ? `<span class="day-now">现在 ${fmtClock(now)}</span>` : ""}
           <span class="day-free">可用 ${fmtDur(baseFree[d])}</span>
         </div>
         <div class="axis" style="height:${H}px"></div>
       </section>`);
     const axis = card.querySelector('.axis');
 
-    // 小时刻度
-    for (let h = Math.ceil(lo / 60) * 60; h <= hi; h += 60) {
-      const top = ((h - lo) / (hi - lo)) * H;
-      axis.append(el(`<div class="axis-line" style="top:${top}px"></div>`));
-      if (h % 120 === 0) {
-        axis.append(el(`<div class="axis-hour" style="top:${top}px">${fmtClock(h)}</div>`));
-      }
-    }
 
     // 固定占用
     for (const b of fixed) {
@@ -1055,16 +1050,17 @@ function renderAxisInto(frag) {
       const top = ((b.start - lo) / (hi - lo)) * H;
       const h = Math.max(20, ((b.end - b.start) / (hi - lo)) * H);
       const bar = el(`<div class="axis-bar" style="top:${top}px;height:${h}px;--bar:${taskColor(b.taskId)}">
-          <b>${b.task.title}</b><span>${fmtClock(b.start)}–${fmtClock(b.end)}</span>
+          <b><i class="dot-c"></i>${b.task.title}</b>
+          <span>${fmtClock(b.start)}–${fmtClock(b.end)} · ${fmtDur(b.end - b.start)}</span>
         </div>`);
       bar.onclick = () => openBlockEditor(b);
       axis.append(bar);
     }
 
-    // 现在时刻线
+    // 现在时刻：毛玻璃三角，不用线条
     if (isToday && now >= lo && now <= hi) {
       const top = ((now - lo) / (hi - lo)) * H;
-      axis.append(el(`<div class="axis-now" style="top:${top}px"><i></i><span>现在</span></div>`));
+      axis.append(el(`<div class="axis-now" style="top:${top}px"><i></i></div>`));
     }
 
     frag.append(card);
