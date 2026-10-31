@@ -194,6 +194,24 @@ score = w·i + (1 − w)·u      w 默认 0.45，界面上是一根滑杆
 
 为什么不做拖拽：拖拽本身不难，难的是它会把「编辑」和「排程」搅在一起——拖到冲突位置、拖到已过去时段、
 拖完和固定占用打架，每条都要新增规则并补测试。轴视图用 1/5 的成本拿到了 80% 的价值。
+### 存档备份 / 恢复（`tools/store-io.mjs`）
+
+```
+node tools/store-io.mjs dump   backup.json
+node tools/store-io.mjs restore backup.json
+```
+
+**千万不要把 node 的输出用 PowerShell 管道写文件**：
+
+```powershell
+node tools/cdp.mjs "Cosmos.load()" | Out-File backup.json   # 错
+```
+
+PS 5.1 会用 ANSI 解码 node 吐出的 UTF-8 字节，中文变成 `é•¿æœŸé¡¹ç›®`，
+再恢复回去就是脏数据。这个坑真实发生过一次，整份存档的课表名、学期名、任务名全部二次编码。
+`store-io.mjs` 用 `execFileSync(..., {encoding: 'buffer'})` 拿原始字节，绕开字符集转换。
+
+数据已经坏了也能救：按字节反向解码（Latin-1 → UTF-8），脚本里那次修复了 13 处。
 ### 真机回归脚本（`tools/e2e.ps1`）
 
 九个步骤，全部在真机上跑：清库 → 冷启动 → 注入 10 天前的旧存档 → 重启 → 断言跨周滚动
