@@ -1057,11 +1057,12 @@ html[data-scene] body {
   backdrop-filter: blur(18px) saturate(1.25);
   border: 1px solid rgba(255, 255, 255, 0.85);
   box-shadow: 0 10px 26px rgba(26, 66, 86, 0.1);
-  padding: 10px 13px;
+  padding: 8px 13px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  justify-content: center;
+  gap: 2px;
   cursor: pointer;
 }
 .axis-bar:active {

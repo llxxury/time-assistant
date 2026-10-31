@@ -1035,27 +1035,34 @@ function renderAxisInto(frag) {
     const axis = card.querySelector('.axis');
 
 
-    // 固定占用
-    for (const b of fixed) {
-      const top = ((b.start - lo) / (hi - lo)) * H;
-      const h = Math.max(14, ((b.end - b.start) / (hi - lo)) * H);
-      axis.append(
-        el(`<div class="axis-fixed" style="top:${top}px;height:${h}px">
-            <span>${b.label}</span></div>`)
-      );
-    }
+    // 统一排版：课表和任务一起按开始时间排，块高有下限，避免文字被压扁或上下叠住
+    const entries = [
+      ...fixed.map((b) => ({ b, kind: 'fixed' })),
+      ...blocks.map((b) => ({ b, kind: 'task' })),
+    ].sort((x, y) => x.b.start - y.b.start || x.b.end - y.b.end);
 
-    // 任务块（点一下能编辑）
-    for (const b of blocks) {
-      const top = ((b.start - lo) / (hi - lo)) * H;
-      const h = Math.max(20, ((b.end - b.start) / (hi - lo)) * H);
-      const bar = el(`<div class="axis-bar" style="top:${top}px;height:${h}px;--bar:${taskColor(b.taskId)}">
-          <b><i class="dot-c"></i>${b.task.title}</b>
-          <span>${fmtClock(b.start)}–${fmtClock(b.end)} · ${fmtDur(b.end - b.start)}</span>
-        </div>`);
-      bar.onclick = () => openBlockEditor(b);
-      axis.append(bar);
+    let cursor = -1e9;
+    let bottom = 0;
+    for (const { b, kind } of entries) {
+      const natural = ((b.end - b.start) / (hi - lo)) * H;
+      const h = Math.max(kind === 'fixed' ? 34 : 46, natural); // 低于这个高度文字就放不下
+      const top = Math.max(((b.start - lo) / (hi - lo)) * H, cursor + 6);
+      cursor = top + h;
+      bottom = Math.max(bottom, cursor);
+
+      if (kind === 'fixed') {
+        axis.append(el(`<div class="axis-fixed" style="top:${top}px;height:${h}px"><span>${b.label}</span></div>`));
+      } else {
+        const bar = el(`<div class="axis-bar" style="top:${top}px;height:${h}px;--bar:${taskColor(b.taskId)}">
+            <b><i class="dot-c"></i>${b.task.title}</b>
+            <span>${fmtClock(b.start)}–${fmtClock(b.end)} · ${fmtDur(b.end - b.start)}</span>
+          </div>`);
+        bar.onclick = () => openBlockEditor(b);
+        axis.append(bar);
+      }
     }
+    // 块被抬高之后，容器可能装不下，跟着长高
+    if (bottom > H) axis.style.height = `${Math.ceil(bottom + 8)}px`;
 
     // 现在时刻：毛玻璃三角，不用线条
     if (isToday && now >= lo && now <= hi) {
