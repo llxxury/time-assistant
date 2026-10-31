@@ -181,6 +181,18 @@ score = w·i + (1 − w)·u      w 默认 0.45，界面上是一根滑杆
 - **跨周滚动**：`roll.js` 的 `LISTS` 里已经带上 `pins`，和 log/pending 一样迁移。
 
 测试在 `tests/pins.test.js`（7 条）+ `tests/roll.test.js` 里的一条迁移测试。
+### 界面风格：普通 / 玻璃 / 考卷（`uiMode`）
+
+`store.uiMode` 有三个值：`plain`（默认）、`glass`、`exam`。实现是同一套「可拆卸外挂」：
+`applySkin()` 按值往 `<head>` 插对应的 `skin-*.css`，并给 `<html>` 打 `data-ui`，切换时删掉不用的那个。
+
+- `skin-glass.css`：照设计稿做的浅色毛玻璃风（雾蓝 #7FA8C9 + 薄荷 #9FD3C7，圆角 28，24px 模糊，
+  1px 白色内描边）。**文字改成深墨绿**——稿子里白字压浅玻璃对比度只有约 1.5:1，实际看不清。
+- `skin-exam.css`：考卷模式，另外还带三个 JS 分支（空状态/盖章/错题卡）。
+
+两个坑：
+1. `applyTheme()` 把颜色写成**行内变量**，皮肤里覆盖变量必须加 `!important`，否则不生效。
+2. 玻璃/考卷模式下主题卡置灰（配色固定），否则用户点了没反应会以为坏了。
 ### 实验功能：考卷模式（`uiMode`）
 
 `store.uiMode` 只有两个值：缺省/`plain`（正常界面）和 `exam`（考卷皮肤）。

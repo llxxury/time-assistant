@@ -1,0 +1,175 @@
+/*
+ * 「玻璃」皮肤 —— 照 design 稿实现的高级风。
+ * 和考卷模式一样是外挂：打开才插 link，关掉完全回到原样。
+ *
+ * 与稿子的唯一差异：稿子里白字压在浅色玻璃上（对比度约 1.5:1，看不清），
+ * 这里改成深墨绿文字，材质、圆角、阴影、配色照稿。
+ */
+
+/* 注意：applyTheme() 把颜色写成行内变量，优先级高于样式表，所以这里必须 !important */
+html[data-ui='glass'] {
+  --accent: #7fa8c9 !important;
+  --accent-2: #9fd3c7 !important;
+  --tint: #eaf7f2 !important;
+  --tint-2: #e3f2f4 !important;
+  --ink: #17323e !important;
+  --ink-2: #33525f !important;
+  --sub: #6e8c97 !important;
+  --glass: rgba(255, 255, 255, 0.42) !important;
+  --glass-line: rgba(255, 255, 255, 0.75) !important;
+  --shadow: 0 18px 50px rgba(26, 66, 86, 0.12) !important;
+  --r-card: 28px !important;
+  --r-btn: 999px !important;
+
+  background:
+    radial-gradient(120% 60% at 12% 0%, #f6fdf9 0%, rgba(246, 253, 249, 0) 55%),
+    radial-gradient(90% 50% at 100% 8%, #e6f4f7 0%, rgba(230, 244, 247, 0) 60%),
+    linear-gradient(168deg, #f4fbf7 0%, #e8f5f5 42%, #d5e9f1 78%, #cbe3ee 100%) !important;
+  background-attachment: fixed !important;
+}
+
+html[data-ui='glass'] body {
+  color: var(--ink);
+}
+
+/* ---------- 玻璃卡片 ---------- */
+html[data-ui='glass'] .card,
+html[data-ui='glass'] .now-card,
+html[data-ui='glass'] .day,
+html[data-ui='glass'] .pending,
+html[data-ui='glass'] .set-row,
+html[data-ui='glass'] .sheet {
+  background: rgba(255, 255, 255, 0.42) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.35);
+  backdrop-filter: blur(24px) saturate(1.35);
+  border: 1px solid rgba(255, 255, 255, 0.72) !important;
+  border-radius: 28px !important;
+  box-shadow: 0 18px 50px rgba(26, 66, 86, 0.12) !important;
+}
+
+/* 卡片内部的开关行不要再来一层玻璃，避免「玻璃里套玻璃」 */
+html[data-ui='glass'] .set-row {
+  background: transparent !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border-bottom: 1px solid rgba(23, 50, 62, 0.06) !important;
+}
+html[data-ui='glass'] .set-row:last-child {
+  border-bottom: 0 !important;
+}
+
+/* ---------- 分段控件：浮动胶囊 ---------- */
+html[data-ui='glass'] .seg {
+  background: rgba(255, 255, 255, 0.5) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  backdrop-filter: blur(20px) saturate(1.3);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 999px !important;
+  box-shadow: 0 10px 30px rgba(26, 66, 86, 0.1);
+}
+html[data-ui='glass'] .seg-btn {
+  border-radius: 999px !important;
+  color: var(--sub);
+}
+html[data-ui='glass'] .seg-btn.is-on {
+  background: rgba(255, 255, 255, 0.95) !important;
+  color: var(--ink) !important;
+  box-shadow: 0 6px 18px rgba(26, 66, 86, 0.14);
+}
+
+/* ---------- 按钮：胶囊 + 玻璃 ---------- */
+html[data-ui='glass'] .btn,
+html[data-ui='glass'] .ghost-btn {
+  border-radius: 999px !important;
+}
+html[data-ui='glass'] .btn-primary {
+  background: linear-gradient(180deg, rgba(127, 168, 201, 0.98), rgba(112, 152, 186, 0.98)) !important;
+  color: #fff !important;
+  box-shadow: 0 10px 26px rgba(90, 130, 165, 0.35);
+}
+html[data-ui='glass'] .btn-ghost {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  color: var(--ink-2) !important;
+  box-shadow: 0 8px 22px rgba(26, 66, 86, 0.08);
+}
+html[data-ui='glass'] .ghost-btn {
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  color: var(--ink-2) !important;
+}
+html[data-ui='glass'] .ghost-btn.danger {
+  color: #c2415a !important;
+}
+
+/* ---------- 今天 / 进度条 ---------- */
+html[data-ui='glass'] .day.is-today {
+  box-shadow:
+    0 18px 50px rgba(26, 66, 86, 0.12),
+    inset 0 0 0 1.5px rgba(127, 168, 201, 0.7) !important;
+}
+html[data-ui='glass'] .progress,
+html[data-ui='glass'] .sub-track {
+  background: rgba(23, 50, 62, 0.08);
+  border-radius: 999px;
+}
+html[data-ui='glass'] .progress > i,
+html[data-ui='glass'] .sub-track i {
+  background: linear-gradient(90deg, #7fa8c9, #9fd3c7) !important;
+  border-radius: 999px;
+}
+
+/* ---------- 主题卡片 / 折叠头 ---------- */
+html[data-ui='glass'] .theme-tile {
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 22px !important;
+}
+html[data-ui='glass'] .fold-head .fold-title {
+  color: var(--ink-2);
+  font-weight: 700;
+}
+
+/* ---------- 底部弹层 ---------- */
+html[data-ui='glass'] .sheet {
+  border-radius: 28px 28px 0 0 !important;
+}
+html[data-ui='glass'] .sheet-mask {
+  background: rgba(18, 40, 52, 0.28);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+/* ---------- 输入框 ---------- */
+html[data-ui='glass'] input,
+html[data-ui='glass'] textarea,
+html[data-ui='glass'] select {
+  background: rgba(255, 255, 255, 0.75) !important;
+  border: 1px solid rgba(255, 255, 255, 0.9) !important;
+  border-radius: 14px !important;
+  color: var(--ink) !important;
+}
+
+/* ---------- 确认框 ---------- */
+html[data-ui='glass'] .confirm {
+  background: rgba(255, 255, 255, 0.86);
+  -webkit-backdrop-filter: blur(28px) saturate(1.3);
+  backdrop-filter: blur(28px) saturate(1.3);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 26px;
+  box-shadow: 0 24px 70px rgba(16, 40, 52, 0.24);
+}
+
+/* 玻璃模式和风景背景层互斥（背景由皮肤自己管） */
+html[data-ui='glass'] #bg {
+  display: none;
+}
+
+/* 玻璃风格固定配色，主题卡置灰（和考卷模式同一规则） */
+html[data-ui='glass'] .theme-grid {
+  opacity: 0.45;
+  pointer-events: none;
+}

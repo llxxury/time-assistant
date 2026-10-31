@@ -1487,24 +1487,31 @@ function applyTheme() {
 /* ================= 「考卷」皮肤（实验，默认关） ================= */
 
 const SKIN_EXAM = 'exam';
-const uiMode = () => (store.uiMode === SKIN_EXAM ? SKIN_EXAM : 'plain');
+const SKIN_GLASS = 'glass';
+const uiMode = () => (store.uiMode === SKIN_EXAM || store.uiMode === SKIN_GLASS ? store.uiMode : 'plain');
 
 /**
  * 皮肤是「可拆卸的外挂」：打开时插一个 link，关掉时删掉。
  * 不加载 = 完全不影响原界面，连字节都不多。
  */
+const SKIN_FILES = { exam: 'skin-exam.css', glass: 'skin-glass.css' };
+
 function applySkin() {
-  const on = uiMode() === SKIN_EXAM;
-  document.documentElement.dataset.ui = on ? SKIN_EXAM : '';
-  let link = document.getElementById('skin-exam');
-  if (on && !link) {
-    link = document.createElement('link');
-    link.id = 'skin-exam';
-    link.rel = 'stylesheet';
-    link.href = 'skin-exam.css';
-    document.head.append(link);
-  } else if (!on && link) {
-    link.remove();
+  const mode = uiMode();
+  document.documentElement.dataset.ui = mode === 'plain' ? '' : mode;
+  for (const [key, href] of Object.entries(SKIN_FILES)) {
+    const id = 'skin-' + key;
+    const link = document.getElementById(id);
+    const want = mode === key;
+    if (want && !link) {
+      const el = document.createElement('link');
+      el.id = id;
+      el.rel = 'stylesheet';
+      el.href = href;
+      document.head.append(el);
+    } else if (!want && link) {
+      link.remove();
+    }
   }
 }
 
@@ -2036,30 +2043,32 @@ function renderSettings() {
   frag.append(themeCard);
 
   /* 实验（整活层，默认关） */
-  frag.append(el(`<div class="section-title">实验</div>`));
-  const examOn = uiMode() === SKIN_EXAM;
-  const expCard = el(`<div class="card">
-      <div class="set-row">
-        <div>
-          <div class="set-title">考卷模式</div>
-          <div class="set-sub">${examOn ? '开着：界面是一张试卷，配色固定' : '把界面变成一张试卷（实验功能，随时可关）'}</div>
-        </div>
-        <button class="switch ${examOn ? 'on' : ''}" id="ui-mode"><i></i></button>
+  frag.append(el(`<div class="section-title">界面风格</div>`));
+  const skinMode = uiMode();
+  const skinHint =
+    skinMode === 'glass'
+      ? '玻璃风格：浅色毛玻璃卡片 + 雾蓝强调色，主题色会被固定'
+      : skinMode === 'exam'
+        ? '考卷模式使用固定配色，关掉后主题颜色会恢复'
+        : '普通：跟随下方主题';
+  const skinCard = el(`<div class="card">
+      <div class="chips" id="skin-chips">
+        ${[['plain', '普通'], ['glass', '玻璃'], ['exam', '考卷']]
+          .map(([k, label]) => `<button class="chip ${skinMode === k ? 'is-on' : ''}" data-s="${k}">${label}</button>`)
+          .join('')}
       </div>
+      <div class="footnote" style="margin-top:10px">${skinHint}</div>
     </div>`);
-  expCard.querySelector('#ui-mode').onclick = () => {
-    store.uiMode = uiMode() === SKIN_EXAM ? 'plain' : SKIN_EXAM;
+  skinCard.querySelector('#skin-chips').onclick = (e) => {
+    const k = e.target?.closest?.('.chip')?.dataset?.s;
+    if (!k) return;
+    store.uiMode = k;
     writeStore();
     applySkin();
     paint();
-    toast(store.uiMode === SKIN_EXAM ? '考卷模式：开' : '已切回普通界面');
+    toast(k === 'plain' ? '已恢复普通界面' : k === 'glass' ? '玻璃风格已开启' : '考卷模式已开启');
   };
-  frag.append(expCard);
-  if (examOn) {
-    frag.append(
-      el(`<div class="footnote" style="margin:-4px 0 14px">考卷模式使用固定配色，关掉后主题颜色会恢复</div>`)
-    );
-  }
+  frag.append(skinCard);
 
   /* 帮助 */
   frag.append(el(`<div class="section-title">帮助</div>`));

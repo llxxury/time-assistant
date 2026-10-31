@@ -465,6 +465,7 @@ const ASSETS = [
   ['assets/web/app.js', 'scheduler/web/app.js'],
   ['assets/web/roll.js', 'scheduler/web/roll.js'],
   ['assets/web/skin-exam.css', 'scheduler/web/skin-exam.css'],
+  ['assets/web/skin-glass.css', 'scheduler/web/skin-glass.css'],
   ['assets/version.js', 'scheduler/version.js'],
   ['assets/web/style.css', 'scheduler/web/style.css'],
   ['assets/engine/plan.js', 'scheduler/engine/plan.js'],
