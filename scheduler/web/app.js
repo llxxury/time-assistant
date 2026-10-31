@@ -2611,7 +2611,6 @@ document.addEventListener('touchend', () => {
     return;
   }
   const dx = swipe.dx;
-  swipeDx = dx;
   const i = TAB_ORDER.indexOf(view.tab);
   const dir = dx < 0 ? 1 : -1;
   const next = TAB_ORDER[i + dir];
@@ -2628,19 +2627,10 @@ document.addEventListener('touchcancel', () => {
 });
 
 function springBack() {
-  // 用 WAAPI 而不是 transition：动画结束自动回到原值，不会留下位移
-  if (!app.animate) {
-    app.style.transform = '';
-    return;
-  }
-  app.animate([{ transform: `translateX(${swipeDx}px)` }, { transform: 'translateX(0)' }], {
-    duration: 160,
-    easing: 'ease-out',
-  });
+  // 不要回弹动画：手指松开、没到切换阈值就直接归位。
+  // 顶栏是 sticky 的，任何回弹都会让人觉得「顶上那一条在弹」，干脆不做。
   app.style.transform = '';
 }
-
-let swipeDx = 0;
 
 /** dir: 1 = 往左滑（下一页），-1 = 往右滑（上一页） */
 function slideTo(tab, dir) {

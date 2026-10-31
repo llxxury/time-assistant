@@ -17,6 +17,8 @@
 
 /* 页面必须铺满视口，否则底部会露出 WebView 的默认白底 */
 html, body {
+  /* 禁掉横向 overscroll：Android 12+ 的拉伸回弹会把整页（含顶栏）一起拉 */
+  overscroll-behavior: none;
   min-height: 100%;
   margin: 0;
   background: var(--bg);
