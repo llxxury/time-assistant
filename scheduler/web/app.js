@@ -2598,6 +2598,8 @@ document.addEventListener(
         swipe = null;
         return;
       }
+      // 拖拽期间：把内容提到合成层，并临时关掉毛玻璃（这是卡顿的主因）
+      document.documentElement.classList.add('is-swiping');
     }
     if (!swipe.active) return;
 
@@ -2605,13 +2607,14 @@ document.addEventListener(
     const i = TAB_ORDER.indexOf(view.tab);
     const edge = (swipe.dx > 0 && i === 0) || (swipe.dx < 0 && i === TAB_ORDER.length - 1);
     const dx = edge ? swipe.dx * 0.28 : swipe.dx; // 到头了给点阻尼
-    app.style.transition = 'none';
-    app.style.transform = `translateX(${dx}px)`;
+    queueTransform(dx);
   },
   { passive: false }
 );
 
 document.addEventListener('touchend', () => {
+  document.documentElement.classList.remove('is-swiping');
+  cancelPendingFrame();
   if (!swipe || !swipe.active) {
     swipe = null;
     return;
@@ -2628,31 +2631,53 @@ document.addEventListener('touchend', () => {
 });
 
 document.addEventListener('touchcancel', () => {
+  document.documentElement.classList.remove('is-swiping');
+  cancelPendingFrame();
   if (swipe && swipe.active) springBack();
   swipe = null;
 });
 
+/** 每帧只写一次 transform，避免 touchmove 频率高时把主线程压死 */
+let pendingDx = 0;
+let rafId = 0;
+function queueTransform(dx) {
+  pendingDx = dx;
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    rafId = 0;
+    app.style.transform = `translate3d(${pendingDx}px,0,0)`;
+  });
+}
+
+/** 取消还没执行的 rAF，否则松手后旧的位移会把清空的 transform 又写回去 */
+function cancelPendingFrame() {
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = 0;
+  }
+}
+
 function springBack() {
   // 不要回弹动画：手指松开、没到切换阈值就直接归位。
   // 顶栏是 sticky 的，任何回弹都会让人觉得「顶上那一条在弹」，干脆不做。
+  cancelPendingFrame();
   app.style.transform = '';
 }
 
 /** dir: 1 = 往左滑（下一页），-1 = 往右滑（上一页） */
 function slideTo(tab, dir) {
+  cancelPendingFrame();
   app.style.transform = ''; // 先把拖动时的位移清掉
   view.tab = tab;
   paint();
   window.scrollTo({ top: 0 });
   if (!app.animate) return;
   // 新页面从一侧轻轻滑入。动画只影响本次绘制，结束时自动归零
-  app.animate(
-    [
-      { transform: `translateX(${dir * 40}px)`, opacity: 0.35 },
-      { transform: 'translateX(0)', opacity: 1 },
-    ],
-    { duration: 190, easing: 'cubic-bezier(.2,.7,.3,1)' }
-  );
+  // 只做位移：大图层跑 opacity 动画同样掉帧
+  app.animate([{ transform: `translate3d(${dir * 40}px,0,0)` }, { transform: 'translate3d(0,0,0)' }], {
+    duration: 190,
+    easing: 'cubic-bezier(.2,.7,.3,1)',
+  });
 }
 /* ================= 主渲染 ================= */
 

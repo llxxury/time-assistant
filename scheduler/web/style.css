@@ -1260,3 +1260,25 @@ html[data-ui='glass'] {
 body {
   min-height: 100vh;
 }
+
+
+/* ---------- 拖拽期间的性能开关 ---------- */
+html.is-swiping #app {
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+}
+/* 毛玻璃是滑动卡顿的主因：拖动时先关掉，松手立刻恢复。
+   卡片底色本来是半透明白，不模糊几乎看不出差别。 */
+html.is-swiping .card,
+html.is-swiping .now-card,
+html.is-swiping .day,
+html.is-swiping .pending,
+html.is-swiping .axis-bar,
+html.is-swiping .axis-fixed,
+html.is-swiping .dash,
+html.is-swiping .set-row,
+html.is-swiping .task-item,
+html.is-swiping .seg {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
