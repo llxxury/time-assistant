@@ -1,0 +1,29 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 语法检查
+        run: |
+          node --check scheduler/web/app.js
+          node --check scheduler/web/roll.js
+          node --check scheduler/engine/plan.js
+          node --check scheduler/engine/time.js
+          node --check scheduler/version.js
+          node --check apk/pack.js
+
+      - name: 单元测试（含快照）
+        working-directory: scheduler
+        run: node --test tests/*.test.js

@@ -1,0 +1,27 @@
+# 构建产物
+apk/build/
+scheduler/build/
+*.apk
+*.idsig
+dist/
+
+# 密钥：绝对不要提交
+apk/keystore/
+*.keystore
+*.jks
+keystore.properties
+
+# 依赖与缓存
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+
+# 构建工具的大 jar（自己按 tools/README 放，不进仓库）
+tools/*.jar
+tools/*.zip
+
+# IDE
+.idea/
+*.iml
+.vscode/

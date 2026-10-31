@@ -1,0 +1,54 @@
+name: Bug 报告
+description: 排程不对、界面异常、崩溃，或者提醒没响
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先在 App 里打开 **设置 → 诊断 → 复制报告**，下面第二栏直接粘贴。
+        报告里只有版本、设备、任务数量和时间戳，不含任务内容。
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 你本来想做什么，实际结果是什么
+      placeholder: 我想把「第三章习题」排进今天下午，结果它被排到了三天后……
+    validations:
+      required: true
+
+  - type: textarea
+    id: diag
+    attributes:
+      label: 诊断报告
+      description: 设置 → 诊断 → 复制报告
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤（可选，但很有用）
+      placeholder: |
+        1. 新建任务，5 星，180 分钟，截止今天 18:00
+        2. 时间模板里今天只剩 1 小时
+        3. 看「计划」页
+    validations:
+      required: false
+
+  - type: input
+    id: device
+    attributes:
+      label: 手机 / 系统
+      placeholder: Redmi 13C 5G / Android 15
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我确认诊断报告里没有我不想公开的内容
+          required: true

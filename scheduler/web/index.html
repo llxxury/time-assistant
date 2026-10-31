@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>time-assistant</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="seg" role="tablist">
+      <button class="seg-btn is-on" data-tab="now" role="tab">现在</button>
+      <button class="seg-btn" data-tab="week" role="tab">计划</button>
+      <button class="seg-btn" data-tab="tasks" role="tab">任务</button>
+      <button class="seg-btn" data-tab="stats" role="tab">统计</button>
+      <button class="seg-btn" data-tab="settings" role="tab">设置</button>
+    </div>
+  </header>
+
+  <main id="app"></main>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
