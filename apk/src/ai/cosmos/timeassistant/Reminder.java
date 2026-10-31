@@ -15,7 +15,7 @@ import org.json.JSONObject;
 public class Reminder {
     static final String PREFS = "reminders";
     static final String KEY = "list";
-    static final String CHANNEL = "plan2"; // 换 id：通道创建后配置不可改，老通道是静音的
+    static final String CHANNEL = "plan4"; // 换 id：通道创建后配置不可改，老通道是静音的
 
     static void ensureChannel(Context c) {
         try {
@@ -23,8 +23,8 @@ public class Reminder {
             if (nm == null) return;
 
             // 老通道（没声音没震动）删掉，免得用户还留着
-            if (nm.getNotificationChannel("plan") != null) {
-                nm.deleteNotificationChannel("plan");
+            for (String old : new String[]{"plan", "plan2", "plan3"}) {
+                if (nm.getNotificationChannel(old) != null) nm.deleteNotificationChannel(old);
             }
 
             if (nm.getNotificationChannel(CHANNEL) == null) {
@@ -45,8 +45,25 @@ public class Reminder {
                                 .build());
                 nm.createNotificationChannel(ch);
             }
+        } catch (Exception ex) {
+            android.util.Log.e("TA-ALARM", "ensureChannel failed: " + ex, ex);
+        }
+    }
+
+    /**
+     * 系统默认通知音的真实地址。
+     * RingtoneManager.getDefaultUri() 返回的是 content://settings/system/notification_sound，
+     * 是个「再去查一次设置」的间接地址；某些 ROM 解析它失败就静默无声。
+     * 这里直接把 Settings 里存的值取出来（常见是 file:///system/media/audio/...）。
+     */
+    static android.net.Uri soundUri(Context c) {
+        try {
+            String v = android.provider.Settings.System.getString(
+                    c.getContentResolver(), android.provider.Settings.System.NOTIFICATION_SOUND);
+            if (v != null && v.length() > 0) return android.net.Uri.parse(v);
         } catch (Exception ignored) {
         }
+        return android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
     }
 
     static SharedPreferences prefs(Context c) {

@@ -32,15 +32,22 @@ public class AlarmReceiver extends BroadcastReceiver {
                     .setCategory(Notification.CATEGORY_REMINDER)
                     .setVisibility(Notification.VISIBILITY_PUBLIC)
                     .setContentIntent(pi);
-            if (Build.VERSION.SDK_INT < 26) {
-                b.setPriority(Notification.PRIORITY_HIGH);
-                b.setDefaults(Notification.DEFAULT_ALL);
-                b.setVibrate(new long[]{0, 350, 180, 350});
-            }
+            // MIUI 的 buzz/beep 读的是通知对象上的字段：
+            //  · 不写 → null，它拿空模式去震动，失败
+            //  · setDefaults(DEFAULT_ALL) → vibrate 变成哨兵 {0}，它同样失败
+            //    （日志：NotificationVibratorHelper: Error creating vibration waveform with pattern: [0]）
+            // 所以只给显式的铃声和模式，不要 defaults。
+            b.setPriority(Notification.PRIORITY_HIGH);
+            // 注意：这里只能放 content:// URI。
+            // 放 file:// 会抛 FileUriExposedException（Android 7+ 禁止向通知暴露文件路径），
+            // 结果是整条通知都发不出去。
+            b.setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION));
+            b.setVibrate(new long[]{0, 350, 180, 350});
 
             NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.notify(id == null ? 1 : id.hashCode(), b.build());
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
+            android.util.Log.e("TA-ALARM", "notify failed: " + ex, ex);
         }
     }
 }
