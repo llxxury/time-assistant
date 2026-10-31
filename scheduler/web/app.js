@@ -1041,14 +1041,28 @@ function renderAxisInto(frag) {
       ...blocks.map((b) => ({ b, kind: 'task' })),
     ].sort((x, y) => x.b.start - y.b.start || x.b.end - y.b.end);
 
+    // 卡片大小由文字决定，不跟时长走；纵向位置仍按开始时间，块之间留一点缝隙
     let cursor = -1e9;
     let bottom = 0;
+    let prevEnd = null;
+    let prevBottom = 0;
     for (const { b, kind } of entries) {
-      const natural = ((b.end - b.start) / (hi - lo)) * H;
-      const h = Math.max(kind === 'fixed' ? 34 : 46, natural); // 低于这个高度文字就放不下
-      const top = Math.max(((b.start - lo) / (hi - lo)) * H, cursor + 6);
+      const h = kind === 'fixed' ? 34 : 56;
+      const top = Math.max(((b.start - lo) / (hi - lo)) * H, cursor + 8);
+
+      // 两段之间空得够久，就在空白里标一句「空多久」，别让空白莫名其妙
+      if (prevEnd != null) {
+        const gapMin = b.start - prevEnd;
+        if (gapMin >= 45) {
+          const mid = (prevBottom + top) / 2;
+          axis.append(el(`<div class="axis-gap" style="top:${mid}px">空 ${fmtDur(gapMin)}</div>`));
+        }
+      }
+
       cursor = top + h;
       bottom = Math.max(bottom, cursor);
+      prevEnd = b.end;
+      prevBottom = cursor;
 
       if (kind === 'fixed') {
         axis.append(el(`<div class="axis-fixed" style="top:${top}px;height:${h}px"><span>${b.label}</span></div>`));

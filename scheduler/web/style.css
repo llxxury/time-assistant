@@ -1050,7 +1050,8 @@ html[data-scene] body {
 .axis-bar {
   position: absolute;
   left: 0;
-  right: 0;
+  width: fit-content;
+  max-width: 100%;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.62);
   -webkit-backdrop-filter: blur(18px) saturate(1.25);
@@ -1098,7 +1099,8 @@ html[data-scene] body {
 .axis-fixed {
   position: absolute;
   left: 0;
-  right: 0;
+  width: fit-content;
+  max-width: 100%;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.34);
   -webkit-backdrop-filter: blur(14px);
@@ -1141,4 +1143,15 @@ html[data-scene] body {
   font-weight: 600;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
+}
+/* 段与段之间的空白：标出空了多久 */
+.axis-gap {
+  position: absolute;
+  left: 16px;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--sub);
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
