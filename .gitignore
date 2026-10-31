@@ -3,7 +3,8 @@ apk/build/
 scheduler/build/
 *.apk
 *.idsig
-dist/
+dist/*
+!dist/*.apk
 
 # 密钥：绝对不要提交
 apk/keystore/
@@ -25,3 +26,6 @@ tools/*.zip
 .idea/
 *.iml
 .vscode/
+
+# 发版包要进仓库，方便直接下载
+!dist/*.apk
