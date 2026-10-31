@@ -510,9 +510,13 @@ public class MainActivity extends Activity {
                 AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
                 if (am == null) return;
                 long at = System.currentTimeMillis() + 10000;
-                if (Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) {
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
-                } else {
+                try {
+                    Intent show = new Intent(MainActivity.this, MainActivity.class);
+                    show.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    PendingIntent showPi = PendingIntent.getActivity(MainActivity.this, 0, show,
+                            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                    am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, showPi), pi);
+                } catch (Exception ex) {
                     am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
                 }
             } catch (Exception ignored) {

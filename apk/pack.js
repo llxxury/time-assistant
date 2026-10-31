@@ -419,7 +419,6 @@ const manifest = {
           ],
         },
         { tag: 'receiver', attrs: [AT('name', '.AlarmReceiver'), AT('exported', false)] },
-        { tag: 'service', attrs: [AT('name', '.PlayService'), AT('exported', false)] },
         {
           tag: 'receiver',
           attrs: [AT('name', '.BootReceiver'), AT('exported', true)],

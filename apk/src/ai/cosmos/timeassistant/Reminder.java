@@ -75,6 +75,7 @@ public class Reminder {
      * 闹钟流不受"静音模式"影响，也不走通知通道——MIUI 不给通知放声音时靠这个兜底。
      */
     static void playStrong(final Context c) {
+        android.util.Log.i("TA-ALARM", "playStrong enter");
         // 声音
         try {
             android.net.Uri uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
@@ -173,13 +174,20 @@ public class Reminder {
                 PendingIntent fire = PendingIntent.getBroadcast(c, id.hashCode(), it,
                         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
                 try {
-                    if (Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) {
-                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, fire);
-                    } else {
+                    // 用闹钟级别的闹钟：系统不敢推迟，Doze 也绕开。
+                    // 普通 setExactAndAllowWhileIdle 在国产 ROM 的后台管控下经常被吞。
+                    Intent show = new Intent(c, MainActivity.class);
+                    show.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    PendingIntent showPi = PendingIntent.getActivity(c, 0, show,
+                            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                    am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, showPi), fire);
+                } catch (Exception se) {
+                    android.util.Log.e("TA-ALARM", "setAlarmClock failed, fallback: " + se);
+                    try {
                         am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, fire);
+                    } catch (Exception e2) {
+                        am.set(AlarmManager.RTC_WAKEUP, at, fire);
                     }
-                } catch (SecurityException se) {
-                    am.set(AlarmManager.RTC_WAKEUP, at, fire);
                 }
             }
         } catch (Exception ignored) {
