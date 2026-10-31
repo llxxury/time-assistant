@@ -1013,3 +1013,124 @@ html[data-scene] body {
 .fold-body.is-open {
   display: block;
 }
+
+/* ================= 计划 · 时间轴视图 ================= */
+/* 轴视图不要卡片外壳：只有轴线和事件块 */
+.axis-day {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  margin: 0 0 26px;
+  position: relative;
+}
+.axis-day.is-today {
+  box-shadow: none;
+}
+.axis-day .day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(23, 28, 45, 0.1);
+}
+.axis-day.is-today .day-head {
+  border-bottom-color: var(--accent);
+}
+.axis-day.is-today .day-name {
+  color: var(--accent);
+}
+.axis {
+  position: relative;
+  margin-left: 46px;
+}
+.axis-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(23, 28, 45, 0.08);
+  pointer-events: none;
+}
+.axis-hour {
+  position: absolute;
+  left: -46px;
+  width: 40px;
+  text-align: right;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--sub);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.axis-fixed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 8px;
+  background: rgba(23, 28, 45, 0.07);
+  color: var(--sub);
+  font-size: 11.5px;
+  padding: 4px 8px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.axis-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bar) 26%, transparent);
+  border-left: 3px solid var(--bar);
+  padding: 4px 9px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  cursor: pointer;
+}
+.axis-bar:active {
+  filter: brightness(0.97);
+}
+.axis-bar b {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.axis-bar span {
+  font-size: 10.5px;
+  color: var(--sub);
+  font-variant-numeric: tabular-nums;
+}
+.axis-now {
+  position: absolute;
+  left: -6px;
+  right: 0;
+  height: 0;
+  border-top: 2px solid #e0553f;
+  pointer-events: none;
+  z-index: 3;
+}
+.axis-now i {
+  position: absolute;
+  left: 0;
+  top: -4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e0553f;
+}
+.axis-now span {
+  position: absolute;
+  left: -46px;
+  top: -7px;
+  width: 38px;
+  text-align: right;
+  font-size: 10px;
+  color: #e0553f;
+}

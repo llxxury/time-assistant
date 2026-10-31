@@ -337,6 +337,7 @@ function nowMinute() {
 
 const view = {
   tab: 'now',
+  planMode: store.planMode === 'axis' ? 'axis' : 'list', // list | axis
   preview: { live: nowDayIdx() >= 0 && nowDayIdx() < spanDays(), day: 0, minute: 19 * 60 },
 };
 
@@ -743,6 +744,26 @@ function renderNow() {
 function renderWeek() {
   const frag = document.createDocumentFragment();
 
+  // 计划视图切换：列表 / 时间轴（轴视图只读，点块仍可编辑）
+  const modeBar = el(`<div class="seg seg-sub" id="plan-mode" style="margin-bottom:10px">
+      <button class="seg-btn ${view.planMode === 'list' ? 'is-on' : ''}" data-m="list">列表</button>
+      <button class="seg-btn ${view.planMode === 'axis' ? 'is-on' : ''}" data-m="axis">时间轴</button>
+    </div>`);
+  modeBar.onclick = (e) => {
+    const m = e.target?.closest?.('.seg-btn')?.dataset?.m;
+    if (!m || m === view.planMode) return;
+    view.planMode = m;
+    store.planMode = m;
+    writeStore();
+    paint();
+  };
+  frag.append(modeBar);
+
+  if (view.planMode === 'axis') {
+    renderAxisInto(frag);
+    return frag;
+  }
+
   if (!store.tasks.length) {
     frag.append(
       el(`<div class="card" style="text-align:center;padding:30px 18px;margin-bottom:12px">
@@ -951,6 +972,104 @@ function openBlockEditor(block) {
 
 
 
+/* ================= 计划 · 时间轴视图 ================= */
+// 纯渲染：按当天内容算区间，块高=时长，竖线=小时，红线=现在。
+const AXIS_HOUR = 40; // 每小时多少 px
+const TASK_COLORS = ['#7FA8C9', '#9FD3C7', '#C9A7D8', '#E0B07A', '#8FB98F', '#D89A9A'];
+
+function taskColor(taskId) {
+  let h = 0;
+  for (let i = 0; i < String(taskId).length; i++) h = (h * 31 + String(taskId).charCodeAt(i)) % 997;
+  return TASK_COLORS[h % TASK_COLORS.length];
+}
+
+/** 当天时间轴的范围：贴着内容裁，前后各留 30 分钟；空的一天默认 9:00–18:00 */
+function axisRange(d) {
+  const all = [...fixedBlocksOn(schedule, d), ...blocksOf(d)];
+  if (!all.length) return [9 * 60, 18 * 60];
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const b of all) {
+    lo = Math.min(lo, b.start);
+    hi = Math.max(hi, b.end);
+  }
+  lo = Math.max(0, Math.floor((lo - 30) / 60) * 60);
+  hi = Math.min(1440, Math.ceil((hi + 30) / 60) * 60);
+  if (hi - lo < 180) hi = Math.min(1440, lo + 180); // 最短 3 小时，别压成一条线
+  return [lo, hi];
+}
+
+function renderAxisInto(frag) {
+  if (!store.tasks.length) {
+    frag.append(
+      el(`<div class="card" style="text-align:center;padding:26px 18px">
+          <div class="muted" style="font-size:13.5px">还没有任务，时间轴里没东西可画。</div>
+        </div>`)
+    );
+    return;
+  }
+
+  const today = nowDayIdx();
+  const now = nowMinute();
+
+  for (let d = 0; d < spanDays(); d++) {
+    const fixed = fixedBlocksOn(schedule, d);
+    const blocks = blocksOf(d);
+    if (d >= 7 && !fixed.length && !blocks.length) continue;
+
+    const [lo, hi] = axisRange(d);
+    const H = Math.round(((hi - lo) / 60) * AXIS_HOUR);
+    const isToday = d === today;
+
+    const card = el(`<section class="axis-day ${isToday ? 'is-today' : ''}">
+        <div class="day-head">
+          <span class="day-name">${WD[wdOf(d)]}</span>
+          <span class="day-date">${dateOf(d)}</span>
+          <span class="day-free">可用 ${fmtDur(baseFree[d])}</span>
+        </div>
+        <div class="axis" style="height:${H}px"></div>
+      </section>`);
+    const axis = card.querySelector('.axis');
+
+    // 小时刻度
+    for (let h = Math.ceil(lo / 60) * 60; h <= hi; h += 60) {
+      const top = ((h - lo) / (hi - lo)) * H;
+      axis.append(el(`<div class="axis-line" style="top:${top}px"></div>`));
+      if (h % 120 === 0) {
+        axis.append(el(`<div class="axis-hour" style="top:${top}px">${fmtClock(h)}</div>`));
+      }
+    }
+
+    // 固定占用
+    for (const b of fixed) {
+      const top = ((b.start - lo) / (hi - lo)) * H;
+      const h = Math.max(14, ((b.end - b.start) / (hi - lo)) * H);
+      axis.append(
+        el(`<div class="axis-fixed" style="top:${top}px;height:${h}px">
+            <span>${b.label}</span></div>`)
+      );
+    }
+
+    // 任务块（点一下能编辑）
+    for (const b of blocks) {
+      const top = ((b.start - lo) / (hi - lo)) * H;
+      const h = Math.max(20, ((b.end - b.start) / (hi - lo)) * H);
+      const bar = el(`<div class="axis-bar" style="top:${top}px;height:${h}px;--bar:${taskColor(b.taskId)}">
+          <b>${b.task.title}</b><span>${fmtClock(b.start)}–${fmtClock(b.end)}</span>
+        </div>`);
+      bar.onclick = () => openBlockEditor(b);
+      axis.append(bar);
+    }
+
+    // 现在时刻线
+    if (isToday && now >= lo && now <= hi) {
+      const top = ((now - lo) / (hi - lo)) * H;
+      axis.append(el(`<div class="axis-now" style="top:${top}px"><i></i><span>现在</span></div>`));
+    }
+
+    frag.append(card);
+  }
+}
 /* ================= 任务列表 ================= */
 
 function renderTasks() {
