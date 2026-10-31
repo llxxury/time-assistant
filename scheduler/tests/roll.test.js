@@ -114,3 +114,18 @@ test('日期加减：跨月、跨年都对', () => {
   assert.equal(daysBetween('2026-10-26', '2026-11-05'), 10);
   assert.equal(daysBetween('2026-11-05', '2026-10-26'), -10);
 });
+
+test('滚动：钉住的块也会跟着挪', () => {
+  const store = {
+    startDate: '2026-10-26',
+    pins: [{ taskId: 't1', day: 2, start: 780, end: 900 }],
+    log: [],
+    pending: [],
+    lastPlan: [],
+  };
+  assert.equal(rollStart(store, '2026-11-05'), 10);
+  const p = store.pins[0];
+  assert.equal(p.date, '2026-10-28', 'pin 应该补出绝对日期');
+  assert.equal(p.day, -8, '相对 day 要按新起点重算');
+  assert.equal(p.start, 780, '时间本身不该变');
+});

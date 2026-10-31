@@ -39,9 +39,31 @@ export function parseWeeks(spec) {
 }
 
 export function makeState(fixture, rules = {}) {
+  const r = { ...DEFAULT_RULES, ...(fixture.rules || {}), ...rules };
+  const horizon = fixture.horizonDays ?? 7;
+
+  // 用户钉住的块：它们是「既定事实」，排程要绕开，也要从剩余量里扣掉。
+  // 非法数据直接丢弃（宁可少一个 pin，也不要排出一张自相矛盾的时间轴）。
+  const pins = (fixture.pins || []).filter(
+    (p) =>
+      p &&
+      p.taskId != null &&
+      Number.isFinite(p.day) &&
+      Number.isFinite(p.start) &&
+      Number.isFinite(p.end) &&
+      p.day >= 0 &&
+      p.day < horizon &&
+      p.start >= 0 &&
+      p.end <= DAY &&
+      p.end > p.start
+  );
+
+  const pinnedMin = {};
+  for (const p of pins) pinnedMin[p.taskId] = (pinnedMin[p.taskId] || 0) + (p.end - p.start);
+
   return {
     fixture,
-    rules: { ...DEFAULT_RULES, ...(fixture.rules || {}), ...rules },
+    rules: r,
     tasks: fixture.tasks.map((t) => ({
       ...t,
       // 截止支持两种写法：绝对日期 deadlineDate，或相对天数 deadlineDay。
@@ -54,11 +76,13 @@ export function makeState(fixture, rules = {}) {
                 DAY_MS
             )
           : t.deadlineDay,
-      remain: t.estMin - (t.doneMin || 0),
+      // 剩余量 = 预计 − 已完成 − 已钉住（钉住的那部分不用再排）
+      remain: Math.max(0, t.estMin - (t.doneMin || 0) - (pinnedMin[t.id] || 0)),
       chunks: [],
       stuck: false,
       done: false,
     })),
+    pins: pins.map((p) => ({ taskId: p.taskId, day: p.day, start: p.start, end: p.end })),
     placed: [],
     trace: [],
     infeasible: [],
@@ -274,6 +298,12 @@ export function placeOneChunk(state, task) {
 }
 
 export function plan(state) {
+  // 用户钉住的块先落位：它们是既定事实。放进来之后 freeOf() 自然会绕开它们，
+  // 而 remain 已经在 makeState 里扣掉了这部分时长，不会重复排。
+  for (const p of state.pins || []) {
+    state.placed.push({ ...p, pinned: true });
+  }
+
   let guard = 0;
   while (guard++ < 500) {
     const pending = state.tasks.filter((t) => !t.done && t.remain > 0);

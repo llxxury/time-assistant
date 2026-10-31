@@ -13,7 +13,7 @@ export function daysBetween(from, to) {
   return Math.round((Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / DAY_MS);
 }
 
-const LISTS = ['log', 'pending', 'lastPlan'];
+const LISTS = ['log', 'pending', 'lastPlan', 'pins'];
 
 /**
  * 起点滚到 today，返回挪了几天（0 = 没动）。

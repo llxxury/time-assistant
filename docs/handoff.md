@@ -165,6 +165,22 @@ score = w·i + (1 − w)·u      w 默认 0.45，界面上是一根滑杆
 
 `#bg` 是 `position:fixed; z-index:-1`，所以 `html[data-scene]` 必须把 `html`/`body` 的背景设为透明，
 否则会把渐变盖住。考卷模式下 `#bg` 会被 `skin-exam.css` 隐藏。
+### 计划编辑（pin）：用户改过的块必须被尊重
+
+排程是**每次全量重算**的（启动 / 切回前台 / 每 5 分钟 / 每次操作）。所以用户在计划页做的任何修改，
+如果不落成数据，下一次 rebuild 就会被算回去。
+
+`store.pins = [{ taskId, day, date, start, end }]` 就是这份数据：
+
+- **引擎**：`makeState()` 把 pin 的时长从 `remain` 里扣掉，`plan()` 开头先把 pin 塞进 `placed`。
+  于是 `freeOf()` 自动绕开它们，其余任务照常贪心往下排。
+- **校验**（`checkPlanEdit`）：不早于现在、不撞课（含缓冲）、不与其他块重叠、不超任务总量、不出窗口。
+  不合法就返回文案，弹层不关，让用户改。
+- **进行中的块禁止改开始时间**：否则 `actualMin = 打勾时刻 − 块开始时刻` 会算错。这条是唯一的硬边界。
+- **完成 / 删任务时清 pin**：不清就会重复扣时长。
+- **跨周滚动**：`roll.js` 的 `LISTS` 里已经带上 `pins`，和 log/pending 一样迁移。
+
+测试在 `tests/pins.test.js`（7 条）+ `tests/roll.test.js` 里的一条迁移测试。
 ### 实验功能：考卷模式（`uiMode`）
 
 `store.uiMode` 只有两个值：缺省/`plain`（正常界面）和 `exam`（考卷皮肤）。

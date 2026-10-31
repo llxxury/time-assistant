@@ -914,3 +914,25 @@ html[data-scene] body {
   color: var(--ink-2);
   padding-left: 2px;
 }
+
+/* ================= 计划编辑 ================= */
+.row.is-editable {
+  cursor: pointer;
+}
+.row.is-editable:active {
+  background: rgba(23, 28, 45, 0.045);
+}
+.row.is-editable .row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pin {
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: var(--tint);
+  color: var(--accent);
+  white-space: nowrap;
+}

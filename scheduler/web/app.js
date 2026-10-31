@@ -211,6 +211,7 @@ function completeBlock(b) {
     kind: 'done',
   });
   store.pending = (store.pending || []).filter((x) => x.key !== `${b.taskId}|${b.day}|${b.start}`);
+  removePin(b); // 打勾了，这块不再是「计划」，pin 要清掉，否则会重复扣时长
   rebuild();
   paint();
   flashStamp();
@@ -247,6 +248,7 @@ function handlePending(p, action) {
     if (!confirm(`删除「${t?.title ?? ''}」？`)) return;
     store.tasks = store.tasks.filter((x) => x.id !== p.taskId);
     store.pending = store.pending.filter((x) => x.taskId !== p.taskId);
+    dropPinsOfTask(p.taskId);
     toast('已删除');
   }
 
@@ -614,9 +616,13 @@ function renderNow() {
 
   card.querySelector('#do-done').onclick = () => {
     if (isCur) completeBlock(b);
-    else toast('还没到时间，到点再来');
+    else toast('还没到时间。想现在就做，去「计划」里把它提前');
   };
-  card.querySelector('#do-later').onclick = () => toast('延后还没接');
+  card.querySelector('#do-later').onclick = () => {
+    if (isCur) return toast('这一段正在进行，只能改时长');
+    const err = applyPlanEdit(b, b.start + 30, b.end - b.start);
+    toast(err || '已顺延 30 分钟，后面的重新排好了');
+  };
 
   const follows = list.filter((x) => x.start >= b.end).slice(0, 2);
   const wrap = document.createDocumentFragment();
@@ -695,7 +701,7 @@ function renderWeek() {
     const tasks = blocksOf(d);
     const rows = [
       ...fixed.map((b) => ({ s: b.start, e: b.end, label: b.label, kind: 'fixed' })),
-      ...tasks.map((b) => ({ s: b.start, e: b.end, label: b.task.title, kind: 'task' })),
+      ...tasks.map((b) => ({ s: b.start, e: b.end, label: b.task.title, kind: 'task', block: b })),
     ];
     rows.sort((a, b) => a.s - b.s || a.e - b.e);
     const isToday = view.preview.live && d === nowDayIdx();
@@ -711,20 +717,144 @@ function renderWeek() {
       </section>`);
 
     for (const r of rows) {
-      card.append(
-        el(`
-        <div class="row ${r.kind === 'task' ? 'is-task' : 'is-fixed'}">
+      const row = el(`
+        <div class="row ${r.kind === 'task' ? 'is-task' : 'is-fixed'} ${r.block ? 'is-editable' : ''}">
           <span class="row-time">${fmtClock(r.s)}–${fmtClock(r.e)}</span>
           <span class="bar"></span>
-          <span class="row-label">${r.label}</span>
-        </div>`)
-      );
+          <span class="row-label">${r.label}${r.block?.pinned ? '<span class="pin">已锁定</span>' : ''}</span>
+        </div>`);
+      if (r.block) row.onclick = () => openBlockEditor(r.block);
+      card.append(row);
     }
     card.append(el('<div style="height:8px"></div>'));
     frag.append(card);
   }
   return frag;
 }
+
+/* ================= 计划编辑（pin） ================= */
+/*
+ * 用户手动改过的块会被「钉住」：写进 store.pins，引擎重排时当成既定事实。
+ * 没有 pin 的话，每 5 分钟一次的全量重排会把用户的修改冲掉。
+ */
+
+const pinsOf = () => (store.pins = store.pins || []);
+
+const pinIndexOf = (block) =>
+  pinsOf().findIndex((p) => p.taskId === block.taskId && p.day === block.day && p.start === block.start);
+
+function removePin(block) {
+  const i = pinIndexOf(block);
+  if (i < 0) return false;
+  pinsOf().splice(i, 1);
+  return true;
+}
+
+function dropPinsOfTask(taskId) {
+  if (!Array.isArray(store.pins) || !store.pins.length) return;
+  store.pins = store.pins.filter((p) => p.taskId !== taskId);
+}
+
+/** 校验一次手动改动，返回错误文案；合法返回 null */
+function checkPlanEdit(block, start, dur) {
+  if (!Number.isFinite(start) || !Number.isFinite(dur)) return '时间填得不对';
+  if (dur < 5) return '至少 5 分钟';
+  const end = start + dur;
+  if (start < 0 || end > 1440) return '超出了一天的范围';
+
+  const day = block.day;
+  const today = nowDayIdx();
+  if (day < 0 || day >= store.horizonDays) return '超出了排程窗口';
+  if (day < today) return '这一天已经过去了';
+  if (day === today && start < nowMinute()) return '不能排到已经过去的时间';
+
+  // 不许撞课（含前后缓冲）
+  const buf = schedule.rules.classBufferMin || 0;
+  for (const f of fixedBlocksOn(schedule, day)) {
+    if (start < f.end + buf && f.start - buf < end) return `撞上了「${f.label}」`;
+  }
+
+  // 不许和别的块重叠（跳过它自己）
+  for (const p of schedule.placed) {
+    if (p.taskId === block.taskId && p.day === day && p.start === block.start) continue;
+    if (p.day !== day) continue;
+    if (start < p.end && p.start < end) return '和另一段计划重叠了';
+  }
+
+  // 不许超过任务总量
+  const t = store.tasks.find((x) => x.id === block.taskId);
+  if (t) {
+    const others = pinsOf()
+      .filter((p) => p.taskId === t.id && !(p.day === day && p.start === block.start))
+      .reduce((s, p) => s + (p.end - p.start), 0);
+    const left = t.estMin - (t.doneMin || 0) - others;
+    if (dur > left) return `超出这件任务的总时长（最多还能排 ${fmtDur(left)}）`;
+  }
+  return null;
+}
+
+/** 应用一次改动：钉住、存盘、重排。成功返回 null，失败返回错误文案 */
+function applyPlanEdit(block, start, dur) {
+  const err = checkPlanEdit(block, start, dur);
+  if (err) return err;
+  removePin(block);
+  pinsOf().push({ taskId: block.taskId, day: block.day, date: dateOf(block.day), start, end: start + dur });
+  writeStore();
+  rebuild();
+  paint();
+  return null;
+}
+
+function openBlockEditor(block) {
+  const t = store.tasks.find((x) => x.id === block.taskId);
+  if (!t) return;
+  const running =
+    block.day === nowDayIdx() && nowMinute() >= block.start && nowMinute() < block.end;
+  const pinned = pinIndexOf(block) >= 0;
+
+  openSheet(
+    `编辑：${t.title}`,
+    `<div class="field">
+       <span class="field-label">开始时间${running ? '（正在进行，不能改）' : ''}</span>
+       <input id="pb-start" type="time" value="${fmtClock(block.start)}" ${running ? 'disabled' : ''}>
+     </div>
+     <div class="field">
+       <span class="field-label">时长（分钟）</span>
+       <input id="pb-dur" type="number" min="5" step="5" value="${block.end - block.start}">
+     </div>
+     ${
+       pinned
+         ? '<button class="ghost-btn" id="pb-unpin">取消锁定，交给它自己排</button>'
+         : '<div class="footnote">保存后这一段会被锁定，之后重排不会动它。</div>'
+     }`,
+    (root, close) => {
+      const start = running ? block.start : toMin(root.querySelector('#pb-start').value);
+      const dur = Number(root.querySelector('#pb-dur').value);
+      const err = applyPlanEdit(block, start, dur);
+      if (err) {
+        toast(err);
+        return; // 不关弹层，方便改完再试
+      }
+      close();
+      toast('已调整，后面的计划重新排好了');
+    }
+  );
+
+  const root = document.body.lastElementChild;
+  const un = root.querySelector('#pb-unpin');
+  if (un) {
+    un.onclick = () => {
+      removePin(block);
+      writeStore();
+      rebuild();
+      paint();
+      root.remove();
+      toast('已取消锁定');
+    };
+  }
+}
+
+
 
 /* ================= 任务列表 ================= */
 
@@ -771,6 +901,7 @@ function renderTasks() {
       e.stopPropagation();
       if (!confirm(`删除「${t.title}」？`)) return;
       store.tasks = store.tasks.filter((x) => x.id !== t.id);
+      dropPinsOfTask(t.id);
       writeStore();
       rebuild();
       paint();
