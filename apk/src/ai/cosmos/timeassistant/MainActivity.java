@@ -520,6 +520,16 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void setStrongNotify(boolean on) {
+            Reminder.setStrong(MainActivity.this, on);
+        }
+
+        @JavascriptInterface
+        public boolean getStrongNotify() {
+            return Reminder.strongEnabled(MainActivity.this);
+        }
+
+        @JavascriptInterface
         public void setReminders(String json) {
             try {
                 Reminder.apply(MainActivity.this, json);

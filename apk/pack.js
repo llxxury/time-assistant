@@ -380,7 +380,8 @@ const manifest = {
     perm('android.permission.POST_NOTIFICATIONS'),
     perm('android.permission.SCHEDULE_EXACT_ALARM'),
     perm('android.permission.USE_EXACT_ALARM'),
-    perm('android.permission.RECEIVE_BOOT_COMPLETED'),
+    perm('android.permission.VIBRATE'), // 通知震动和直接震动都要它，少了会静默失败
+  perm('android.permission.RECEIVE_BOOT_COMPLETED'),
     perm('android.permission.WAKE_LOCK'),
     // 调试壳要能从电脑的 dev server 加载界面；正式包是纯本地的，不申请网络权限
     ...(process.env.TA_DEV ? [perm('android.permission.INTERNET')] : []),

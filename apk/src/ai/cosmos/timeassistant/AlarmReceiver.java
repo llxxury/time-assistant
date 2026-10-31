@@ -46,6 +46,12 @@ public class AlarmReceiver extends BroadcastReceiver {
 
             NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.notify(id == null ? 1 : id.hashCode(), b.build());
+
+            // 强提醒：某些 ROM（MIUI）不肯给第三方通知放声音/震动，
+            // 这里直接用闹钟流自己播一次，不依赖通知通道。
+            if (Reminder.strongEnabled(c)) {
+                Reminder.playStrong(c);
+            }
         } catch (Exception ex) {
             android.util.Log.e("TA-ALARM", "notify failed: " + ex, ex);
         }

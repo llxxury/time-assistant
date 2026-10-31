@@ -50,6 +50,72 @@ public class Reminder {
         }
     }
 
+    /** 强提醒开关（用户设置，存在 prefs 里） */
+    static boolean strongEnabled(Context c) {
+        try {
+            if (prefs(c).contains("strong")) return prefs(c).getBoolean("strong", false);
+            // 首次运行：小米系默认开。这类 ROM 不给第三方通知放声音/震动，
+            // 不开就只剩一个安静的横幅。其它品牌默认关，免得跟系统提示音重复。
+            String m = (android.os.Build.MANUFACTURER + " " + android.os.Build.BRAND).toLowerCase();
+            return m.contains("xiaomi") || m.contains("redmi") || m.contains("poco");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    static void setStrong(Context c, boolean on) {
+        try {
+            prefs(c).edit().putBoolean("strong", on).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * 用闹钟流播一次提示音 + 震一下。
+     * 闹钟流不受"静音模式"影响，也不走通知通道——MIUI 不给通知放声音时靠这个兜底。
+     */
+    static void playStrong(final Context c) {
+        // 声音
+        try {
+            android.net.Uri uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
+            if (uri == null) uri = android.provider.Settings.System.DEFAULT_NOTIFICATION_URI;
+            final android.media.MediaPlayer mp = new android.media.MediaPlayer();
+            mp.setAudioAttributes(new android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build());
+            mp.setDataSource(c, uri);
+            mp.setOnCompletionListener(new android.media.MediaPlayer.OnCompletionListener() {
+                public void onCompletion(android.media.MediaPlayer m) {
+                    try {
+                        m.release();
+                    } catch (Exception ignored) {
+                    }
+                }
+            });
+            mp.prepare();
+            mp.start();
+        } catch (Exception ex) {
+            android.util.Log.e("TA-ALARM", "playStrong sound failed: " + ex);
+        }
+
+        // 震动
+        try {
+            long[] pattern = new long[]{0, 350, 180, 350};
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                android.os.VibratorManager vm =
+                        (android.os.VibratorManager) c.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+                if (vm != null) vm.getDefaultVibrator().vibrate(
+                        android.os.VibrationEffect.createWaveform(pattern, -1));
+            } else {
+                android.os.Vibrator v = (android.os.Vibrator) c.getSystemService(Context.VIBRATOR_SERVICE);
+                if (v != null) v.vibrate(android.os.VibrationEffect.createWaveform(pattern, -1));
+            }
+        } catch (Exception ex) {
+            android.util.Log.e("TA-ALARM", "playStrong vibrate failed: " + ex);
+        }
+    }
+
     /**
      * 系统默认通知音的真实地址。
      * RingtoneManager.getDefaultUri() 返回的是 content://settings/system/notification_sound，

@@ -2497,6 +2497,29 @@ function renderSettings() {
   };
   frag.append(semCard);
 
+  /* 提醒开关 */
+  const strongOn = !!(bridge && bridge.getStrongNotify && bridge.getStrongNotify());
+  const notifyCard = el(`
+    <div class="card" style="margin-bottom:10px">
+      <div class="set-row" style="border:0">
+        <div>
+          <div class="set-title">强提醒</div>
+          <div class="set-sub">${strongOn ? '开着：到点自己放声音并震动' : '关着：只用系统通知，部分手机可能没声'}</div>
+        </div>
+        <button class="switch ${strongOn ? 'on' : ''}" id="strong-switch"><i></i></button>
+      </div>
+      <div class="footnote">小米/红米这类系统常把第三方通知的声音和震动吃掉，开着更保险。会走闹钟音量。</div>
+    </div>`);
+  notifyCard.querySelector('#strong-switch').onclick = (e) => {
+    const next = !e.currentTarget.classList.contains('on');
+    e.currentTarget.classList.toggle('on', next);
+    if (bridge && bridge.setStrongNotify) bridge.setStrongNotify(next);
+    const sub = notifyCard.querySelector('.set-sub');
+    if (sub) sub.textContent = next ? '开着：到点自己放声音并震动' : '关着：只用系统通知，部分手机可能没声';
+    toast(next ? '强提醒已开' : '强提醒已关');
+  };
+  frag.append(notifyCard);
+
   /* 排序权重滑杆 */
   store.rules = store.rules || {};
   const w = typeof store.rules.wImportance === 'number' ? store.rules.wImportance : 0.45;
