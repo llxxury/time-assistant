@@ -920,49 +920,62 @@ function renderWeek() {
     );
   }
 
-  let lastWeek = -1;
+  // 先按周分组：一周一个可折叠组，默认展开「本周」和第一周
+  const weeks = new Map();
   for (let d = 0; d < spanDays(); d++) {
     const fixed = fixedBlocksOn(schedule, d);
     const tasks = blocksOf(d);
-    // 第一周全部显示；之后只显示有内容的日子，避免跨度变长后出现几十张空卡片
+    // 第一周全部显示；之后只显示有内容的日子
     if (d >= 7 && !fixed.length && !tasks.length) continue;
     const week = Math.floor(d / 7);
-    if (week !== lastWeek && d >= 7) {
-      frag.append(el(`<div class="section-title">第 ${week + 1} 周</div>`));
-    }
-    lastWeek = week;
-    const rows = [
-      ...fixed.map((b) => ({ s: b.start, e: b.end, label: b.label, kind: 'fixed' })),
-      ...tasks.map((b) => ({ s: b.start, e: b.end, label: b.task.title, kind: 'task', block: b })),
-    ];
-    rows.sort((a, b) => a.s - b.s || a.e - b.e);
-    const now = nowMinute();
-    const isToday = view.preview.live && d === nowDayIdx();
-
-    const card = el(`
-      <section class="day ${isToday ? 'is-today' : ''}">
-        <div class="day-head">
-          <span class="day-name">${WD[wdOf(d)]}</span>
-          <span class="day-date">${dateOf(d)}</span>
-          ${isToday ? `<span class="day-now">现在 ${fmtClock(now)}</span>` : ""}
-          <span class="day-free">可用 ${fmtDur(baseFree[d])}</span>
-        </div>
-        ${rows.length ? '' : '<div class="row-empty">空闲</div>'}
-      </section>`);
-
-    for (const r of rows) {
-      const row = el(`
-        <div class="row ${r.kind === 'task' ? 'is-task' : 'is-fixed'} ${r.block ? 'is-editable' : ''}">
-          <span class="row-time">${fmtClock(r.s)}–${fmtClock(r.e)}</span>
-          <span class="bar"></span>
-          <span class="row-label">${r.label}${r.block?.pinned ? '<span class="pin">已锁定</span>' : ''}</span>
-        </div>`);
-      if (r.block) row.onclick = () => openBlockEditor(r.block);
-      card.append(row);
-    }
-    card.append(el('<div style="height:8px"></div>'));
-    frag.append(card);
+    if (!weeks.has(week)) weeks.set(week, []);
+    weeks.get(week).push({ d, fixed, tasks });
   }
+
+  const todayDay = nowDayIdx();
+  for (const [week, days] of weeks) {
+    const from = dateOf(days[0].d).slice(5);
+    const to = dateOf(days[days.length - 1].d).slice(5);
+    const open = week === 0 || (todayDay >= week * 7 && todayDay < (week + 1) * 7);
+
+    const fold = foldSection('第 ' + (week + 1) + ' 周', from + ' ~ ' + to, open, (body) => {
+      for (const { d, fixed, tasks } of days) {
+        const rows = [
+          ...fixed.map((x) => ({ s: x.start, e: x.end, label: x.label, kind: 'fixed' })),
+          ...tasks.map((x) => ({ s: x.start, e: x.end, label: x.task.title, kind: 'task', block: x })),
+        ];
+        rows.sort((p, q) => p.s - q.s || p.e - q.e);
+        const now = nowMinute();
+        const isToday = view.preview.live && d === nowDayIdx();
+
+        const card = el(`
+          <section class="day ${isToday ? 'is-today' : ''}">
+            <div class="day-head">
+              <span class="day-name">${WD[wdOf(d)]}</span>
+              <span class="day-date">${dateOf(d)}</span>
+              ${isToday ? `<span class="day-now">现在 ${fmtClock(now)}</span>` : ''}
+              <span class="day-free">可用 ${fmtDur(baseFree[d])}</span>
+            </div>
+            ${rows.length ? '' : '<div class="row-empty">空闲</div>'}
+          </section>`);
+
+        for (const r of rows) {
+          const row = el(`
+            <div class="row ${r.kind === 'task' ? 'is-task' : 'is-fixed'} ${r.block ? 'is-editable' : ''}">
+              <span class="row-time">${fmtClock(r.s)}–${fmtClock(r.e)}</span>
+              <span class="bar"></span>
+              <span class="row-label">${r.label}${r.block?.pinned ? '<span class="pin">已锁定</span>' : ''}</span>
+            </div>`);
+          if (r.block) row.onclick = () => openBlockEditor(r.block);
+          card.append(row);
+        }
+        card.append(el('<div style="height:8px"></div>'));
+        body.append(card);
+      }
+    });
+    frag.append(fold);
+  }
+
   return frag;
 }
 
@@ -1045,17 +1058,24 @@ function openBlockEditor(block) {
   const running =
     block.day === nowDayIdx() && nowMinute() >= block.start && nowMinute() < block.end;
   const pinned = pinIndexOf(block) >= 0;
+  // 这件任务还没排的量（扣掉已经锁定在别处的块）
+  const otherPins = (store.pins || [])
+    .filter((p) => p.taskId === block.taskId && !(p.day === block.day && p.start === block.start))
+    .reduce((sum, p) => sum + (p.end - p.start), 0);
+  const leftTotal = Math.max(0, t.estMin - (t.doneMin || 0) - otherPins);
 
   openSheet(
     `编辑：${t.title}`,
     `<div class="field">
-       <span class="field-label">开始时间${running ? '（正在进行，不能改）' : ''}</span>
+       <span class="field-label">这一段从几点开始${running ? '（正在进行，不能改）' : ''}</span>
        <input id="pb-start" type="time" value="${fmtClock(block.start)}" ${running ? 'disabled' : ''}>
      </div>
      <div class="field">
-       <span class="field-label">时长（分钟）</span>
+       <span class="field-label">这一段多久（这件任务还剩 ${fmtDur(leftTotal)}）</span>
        <input id="pb-dur" type="number" min="5" step="5" value="${block.end - block.start}">
      </div>
+     <div class="footnote">改的是「这一段」，不是任务总时长。剩下的量会继续排到别处。</div>
+     <button class="ghost-btn" id="pb-total">改这件任务的总时长</button>
      ${
        pinned
          ? '<button class="ghost-btn" id="pb-unpin">取消锁定，交给它自己排</button>'
@@ -1075,6 +1095,10 @@ function openBlockEditor(block) {
   );
 
   const root = document.body.lastElementChild;
+  root.querySelector('#pb-total').onclick = () => {
+    root.remove();
+    openForm(t);
+  };
   const un = root.querySelector('#pb-unpin');
   if (un) {
     un.onclick = () => {
@@ -1394,6 +1418,27 @@ function renderTasks() {
 
 let formEl = null;
 
+/**
+ * 手动指定时间时的校验：不能在过去、不能撞课、不能和别的块重叠。
+ * 和计划页的 checkPlanEdit 同一套规则，只是这里还没有 schedule 里的新任务。
+ */
+function checkManualSlot(taskId, day, start, end) {
+  if (!Number.isFinite(day) || day < 0 || day >= spanDays()) return '日期超出了排程窗口';
+  if (end > 1440) return '这个时长排不进一天';
+  if (day === nowDayIdx() && start < nowMinute()) return '不能排到已经过去的时间';
+
+  const buf = schedule.rules.classBufferMin || 0;
+  for (const f of fixedBlocksOn(schedule, day)) {
+    if (start < f.end + buf && f.start - buf < end) return `撞上了「${f.label}」`;
+  }
+  for (const p of schedule.placed) {
+    if (p.taskId === taskId) continue;
+    if (p.day !== day) continue;
+    if (start < p.end && p.start < end) return '和已排的某段重叠了';
+  }
+  return null;
+}
+
 function openForm(existing) {
   const t = existing ?? {
     id: null,
@@ -1412,6 +1457,13 @@ function openForm(existing) {
   const maxDate = addDays(todayStr(), 365);
   const dDate = t.deadlineDate ?? dateOf(6);
   const dTime = t.deadlineAt == null ? '23:59' : fmtClock(t.deadlineAt);
+
+  // 手动指定时间：已有锁定块就回填它，没有就默认今晚 19:00
+  const myPins = (store.pins || []).filter((p) => p.taskId === t.id && p.start != null);
+  const hasPin = myPins.length > 0;
+  const firstPin = hasPin ? myPins[0] : null;
+  const manualDate = firstPin ? dateOf(firstPin.day) : todayStr();
+  const manualStart = firstPin ? fmtClock(firstPin.start) : '19:00';
 
   const recent = [...new Set(store.tasks.map((x) => x.title))]
     .filter((x) => x !== t.title)
@@ -1449,6 +1501,28 @@ function openForm(existing) {
             .join('')}</div>
         </div>
 
+        <div class="field">
+          <span class="field-label">怎么排</span>
+          <div class="chips" id="f-place">
+            <button class="chip ${hasPin ? '' : 'is-on'}" data-p="auto">自动排程</button>
+            <button class="chip ${hasPin ? 'is-on' : ''}" data-p="manual">手动指定时间</button>
+          </div>
+        </div>
+
+        <div class="field-row" id="f-manual" ${hasPin ? '' : 'style="display:none"'}>
+          <label class="field">
+            <span class="field-label">哪天</span>
+            <input id="f-manual-date" type="date" min="${minDate}" max="${maxDate}" value="${manualDate}">
+          </label>
+          <label class="field">
+            <span class="field-label">几点开始</span>
+            <input id="f-manual-start" type="time" value="${manualStart}">
+          </label>
+        </div>
+        <div class="footnote" id="f-manual-hint" ${hasPin ? '' : 'style="display:none"'}>
+          这一段会被锁定，自动排程不会动它；以后在「计划」里点它就能改或解锁。
+        </div>
+
         <div class="field" id="f-dur-field" ${isFixed ? 'style="display:none"' : ''}>
           <span class="field-label">预计时长（分钟）</span>
           <div class="chips" id="f-dur">
@@ -1458,6 +1532,11 @@ function openForm(existing) {
           </div>
           <input id="f-min" type="number" inputmode="numeric" min="5" step="5" value="${t.estMin}">
         </div>
+
+        <div class="fold-head" id="f-more-head" style="margin-top:4px">
+          <span class="fold-title">更多选项</span><span class="fold-chev">›</span>
+        </div>
+        <div class="fold-body" id="f-more" style="margin-bottom:8px">
 
         <div class="field">
           <span class="field-label">怎么拆</span>
@@ -1481,15 +1560,16 @@ function openForm(existing) {
           <input id="f-minchunk" type="number" inputmode="numeric" min="15" step="5" value="${t.split.minChunkMin ?? 45}">
         </div>
 
-        <div class="field-row">
-          <label class="field">
-            <span class="field-label">截止日期</span>
-            <input id="f-date" type="date" min="${minDate}" max="${maxDate}" value="${dDate}">
-          </label>
-          <label class="field">
-            <span class="field-label">截止时刻</span>
-            <input id="f-time" type="time" value="${dTime}">
-          </label>
+        <label class="field">
+          <span class="field-label">截止日期</span>
+          <input id="f-date" type="date" min="${minDate}" max="${maxDate}" value="${dDate}">
+        </label>
+
+        <label class="field">
+          <span class="field-label">截止时刻（默认日末）</span>
+          <input id="f-time" type="time" value="${dTime}">
+        </label>
+
         </div>
 
       </div>
@@ -1505,6 +1585,26 @@ function openForm(existing) {
   const $ = (s) => formEl.querySelector(s);
   let stars = t.stars;
   let mode = t.split.mode;
+  let place = hasPin ? 'manual' : 'auto';
+
+  $('#f-place').onclick = (e) => {
+    const p = e.target?.dataset?.p;
+    if (!p) return;
+    place = p;
+    [...$('#f-place').children].forEach((c) => c.classList.toggle('is-on', c.dataset.p === p));
+    $('#f-manual').style.display = p === 'manual' ? '' : 'none';
+    $('#f-manual-hint').style.display = p === 'manual' ? '' : 'none';
+  };
+
+  $('#f-more-head').onclick = () => {
+    $('#f-more-head').classList.toggle('is-open');
+    $('#f-more').classList.toggle('is-open');
+  };
+  // 改过拆分或截止时刻的任务，默认展开，免得以为设置丢了
+  if (t.split.mode !== 'free' || dTime !== '23:59') {
+    $('#f-more-head').classList.add('is-open');
+    $('#f-more').classList.add('is-open');
+  }
 
   $('.sheet-cancel').onclick = closeForm;
   $('.sheet-mask').onclick = closeForm;
@@ -1586,15 +1686,35 @@ function openForm(existing) {
       split,
     };
 
+    // 手动指定：先校验这个时段能不能放，再建锁定块
+    let newPin = null;
+    if (place === 'manual' && mode !== 'fixed') {
+      const mdate = $('#f-manual-date').value || todayStr();
+      const mday = dateToDay(mdate);
+      const start = toMin($('#f-manual-start').value || '19:00');
+      const err = checkManualSlot(next.id, mday, start, start + estMin);
+      if (err) {
+        toast(err);
+        return; // 弹层不关，让他改
+      }
+      newPin = { taskId: next.id, day: mday, date: mdate, start, end: start + estMin };
+    }
+
     const i = store.tasks.findIndex((x) => x.id === next.id);
     if (i >= 0) store.tasks[i] = next;
     else store.tasks.push(next);
+
+    // 手动模式：清掉这件任务之前的锁定块，换成新的
+    if (newPin) {
+      store.pins = (store.pins || []).filter((p) => p.taskId !== next.id);
+      store.pins.push(newPin);
+    }
 
     writeStore();
     rebuild();
     closeForm();
     paint();
-    toast(existing ? '已更新' : '已添加');
+    toast(existing ? '已更新' : newPin ? '已添加并锁定' : '已添加');
   };
 }
 
@@ -2227,7 +2347,10 @@ function openFixedEditor(idx) {
 
   const root = openSheet(
     b ? '编辑占用' : '添加占用',
-    `<label class="field">
+    `<div class="footnote" style="margin-bottom:10px">
+       这里填的是<b>你没空的时间</b>（课、会、班），不是要做的事。要做的事去「任务」页加。
+     </div>
+     <label class="field">
        <span class="field-label">名称</span>
        <input id="x-name" type="text" value="${b?.label ?? ''}" placeholder="社团活动">
      </label>
