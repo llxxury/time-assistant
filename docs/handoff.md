@@ -150,6 +150,22 @@ score = w·i + (1 − w)·u      w 默认 0.45，界面上是一根滑杆
 
 时间一律用**当天分钟数**表示（`19:30` → 1170），不做 UTC 换算。
 
+### 数据安全（别退回去）
+
+只有一个 JSON，但它丢不起。现在的防线是四层，改代码时别拆：
+
+1. **原子写**：`MainActivity.save()` 先写 `DATA_FILE + ".tmp"`、`fsync`，再 `rename` 覆盖。
+   进程被杀或掉电最多留下 `.tmp`，原存档完好。**不要改回直接 `FileOutputStream(target)`。**
+2. **备份**：每次成功保存前，把上一份拷成 `.bak`。
+3. **坏档不覆盖**：`readStore()` 返回 `empty / ok / corrupt` 三态。`corrupt` 时先试 `.bak`；
+   都不行就 `storageLocked = true`，顶部出红条（导出原始数据 / 从备份恢复 / 清空重来），
+   期间 `writeStore()` 直接 return。
+   老版本会把坏档当「首次启动」灌种子数据——用户就是这么无提示地丢过一次全部数据。
+4. **导入**：`importText()` 校验 `tasks` 是数组、`template` 是对象才接受。
+
+从备份恢复时要先调 `discardPrimary()`：否则紧接着的 `save()` 会把坏掉的主存档复制进 `.bak`，
+把唯一的好备份冲掉。
+
 ## 已经踩过的坑（别再踩）
 
 1. **日期必须是 `YYYY-MM-DD`。** 曾经 CLI 里用 `MM-DD`，导致 `Date.parse` 得 `NaN`，整张课表静默消失，而测试全绿——因为测试只测引擎不测输出。所以才有 `render.js` 和快照测试。
@@ -179,7 +195,11 @@ score = w·i + (1 − w)·u      w 默认 0.45，界面上是一根滑杆
    测试见 `tests/roll.test.js`，其中一条专门验「第 10 天仍排得出块且不撞固定占用」。
    遗留提醒：`day` 现在可以是负数，显示日期一律从 `date` 推（见「坑」第 7 条）。
 2. **提醒只有两条**：开始前 5 分钟、开始时。缺「到点没打勾就催一次」，也缺「每天一个晨间汇总」。
-3. **导出 JSON 在 WebView 里可能不工作**（`a.download` 需要 DownloadListener）。要么用原生分享，要么写到 `getExternalFilesDir`。
+3. **导出 / 导入**：~~导出 JSON 在 WebView 里可能不工作~~ 已修。
+   导出走原生 `exportFile()`：API 29+ 用 MediaStore 写进系统「下载」（不需要存储权限），
+   拿 `content://` URI 顺手弹系统分享面板；API 26–28 退回 app 外部目录。
+   导入走 `pickFile()`（系统文件选择器）→ `onActivityResult` 读文本 → `window.__TA_IMPORT` 回调页面 →
+   校验 `tasks` / `template` → 二次确认 → 覆盖（旧数据自动进 `.bak`）。
 4. **统计缺趋势**：没有 12 周格子图，也没有周对比。
 5. **预估校准**：设计过「记住上次设置」的历史复用，代码里只做了表单里的「从最近用过」快捷填充，没有真正的中位数统计。
 6. **崩溃上报**：本地这一侧已经齐了——JS 错误 / promise rejection 进诊断日志（`diag()`，环形 80 条、2 秒合并落盘），
