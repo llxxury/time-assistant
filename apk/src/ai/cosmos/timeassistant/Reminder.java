@@ -50,6 +50,48 @@ public class Reminder {
         }
     }
 
+    /** 用户在设置里选的提示音（空 = 用系统默认） */
+    static String soundPref(Context c) {
+        try {
+            return prefs(c).getString("sound", "");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    static void setSoundPref(Context c, String uri) {
+        try {
+            prefs(c).edit().putString("sound", uri == null ? "" : uri).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** 实际播放用的铃声地址：优先用户选的，否则系统默认 */
+    static android.net.Uri pickSound(Context c) {
+        String s = soundPref(c);
+        if (s != null && s.length() > 0) {
+            try {
+                return android.net.Uri.parse(s);
+            } catch (Exception ignored) {
+            }
+        }
+        return android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
+    }
+
+    /** 给设置页显示的名字 */
+    static String soundName(Context c) {
+        try {
+            android.net.Uri u = pickSound(c);
+            if (u == null) return "系统默认";
+            android.media.Ringtone rt = android.media.RingtoneManager.getRingtone(c, u);
+            if (rt == null) return "系统默认";
+            String t = rt.getTitle(c);
+            return t == null || t.length() == 0 ? "系统默认" : t;
+        } catch (Exception e) {
+            return "系统默认";
+        }
+    }
+
     /** 强提醒开关（用户设置，存在 prefs 里） */
     static boolean strongEnabled(Context c) {
         try {
@@ -78,7 +120,7 @@ public class Reminder {
         android.util.Log.i("TA-ALARM", "playStrong enter");
         // 声音
         try {
-            android.net.Uri uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
+            android.net.Uri uri = pickSound(c);
             if (uri == null) uri = android.provider.Settings.System.DEFAULT_NOTIFICATION_URI;
             final android.media.MediaPlayer mp = new android.media.MediaPlayer();
             mp.setAudioAttributes(new android.media.AudioAttributes.Builder()

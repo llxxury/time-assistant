@@ -555,6 +555,12 @@ function flushDiag() {
   } catch (e) {}
 }
 
+// 原生选完铃声会回调这个
+window.__TA_SOUND = () => {
+  const el2 = document.getElementById('ring-name');
+  if (el2 && bridge && bridge.getRingtoneName) el2.textContent = bridge.getRingtoneName();
+};
+
 // 页面被切走 / 关闭前把攒着的日志落盘，别丢现场
 window.addEventListener('pagehide', flushDiag);
 document.addEventListener('visibilitychange', () => {
@@ -2508,8 +2514,20 @@ function renderSettings() {
         </div>
         <button class="switch ${strongOn ? 'on' : ''}" id="strong-switch"><i></i></button>
       </div>
+      <div class="set-row" style="border:0;border-top:1px solid rgba(23,28,45,.06);margin-top:8px">
+        <div>
+          <div class="set-title">提示音</div>
+          <div class="set-sub" id="ring-name">${bridge && bridge.getRingtoneName ? bridge.getRingtoneName() : '系统默认'}</div>
+        </div>
+        <button class="ghost-btn" id="ring-pick" style="width:auto;padding:0 14px">选择</button>
+      </div>
       <div class="footnote">小米/红米这类系统常把第三方通知的声音和震动吃掉，开着更保险。会走闹钟音量。</div>
     </div>`);
+  notifyCard.querySelector('#ring-pick').onclick = () => {
+    if (bridge && bridge.pickRingtone) bridge.pickRingtone();
+    else toast('这个版本不支持换提示音');
+  };
+
   notifyCard.querySelector('#strong-switch').onclick = (e) => {
     const next = !e.currentTarget.classList.contains('on');
     e.currentTarget.classList.toggle('on', next);

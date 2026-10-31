@@ -33,6 +33,7 @@ public class MainActivity extends Activity {
     private static final String DATA_FILE = "time-assistant-v1.json";
     private static final String HOST = "appassets.local";
     private static final int REQ_PICK = 1001;
+    private static final int REQ_RING = 1002;
     private String pendingImport = null;
     private WebView web;
 
@@ -160,6 +161,20 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == REQ_RING) {
+            if (res == RESULT_OK && data != null) {
+                android.net.Uri picked = data.getParcelableExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+                Reminder.setSoundPref(this, picked == null ? "" : picked.toString());
+                if (web != null) {
+                    web.post(new Runnable() {
+                        public void run() {
+                            web.evaluateJavascript("window.__TA_SOUND && window.__TA_SOUND()", null);
+                        }
+                    });
+                }
+            }
+            return;
+        }
         if (req != REQ_PICK) return;
         pendingImport = null;
         if (res == RESULT_OK && data != null && data.getData() != null) {
@@ -520,6 +535,31 @@ public class MainActivity extends Activity {
                     am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
                 }
             } catch (Exception ignored) {
+            }
+        }
+
+        @JavascriptInterface
+        public String getRingtoneName() {
+            return Reminder.soundName(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void pickRingtone() {
+            try {
+                Intent i = new Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER);
+                i.putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE,
+                        android.media.RingtoneManager.TYPE_NOTIFICATION);
+                i.putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true);
+                i.putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false);
+                android.net.Uri cur = Reminder.pickSound(MainActivity.this);
+                i.putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, cur);
+                // MIUI 上有多个 App 能处理这个 intent，会先弹「选择要使用的应用」。
+                // 直接点名系统的铃声选择器，少一步。
+                i.setPackage("com.android.soundpicker");
+                if (getPackageManager().resolveActivity(i, 0) == null) i.setPackage(null);
+                startActivityForResult(i, REQ_RING);
+            } catch (Exception ex) {
+                android.util.Log.e("TA-ALARM", "pickRingtone failed: " + ex, ex);
             }
         }
 
