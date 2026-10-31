@@ -29,7 +29,14 @@ public class AlarmReceiver extends BroadcastReceiver {
                     .setContentText(text == null ? "" : text)
                     .setSmallIcon(android.R.drawable.ic_dialog_info)
                     .setAutoCancel(true)
+                    .setCategory(Notification.CATEGORY_REMINDER)
+                    .setVisibility(Notification.VISIBILITY_PUBLIC)
                     .setContentIntent(pi);
+            if (Build.VERSION.SDK_INT < 26) {
+                b.setPriority(Notification.PRIORITY_HIGH);
+                b.setDefaults(Notification.DEFAULT_ALL);
+                b.setVibrate(new long[]{0, 350, 180, 350});
+            }
 
             NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.notify(id == null ? 1 : id.hashCode(), b.build());

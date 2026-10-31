@@ -2374,6 +2374,46 @@ function renderSettings() {
   };
   frag.append(semCard);
 
+  /* 排序权重滑杆 */
+  store.rules = store.rules || {};
+  const w = typeof store.rules.wImportance === 'number' ? store.rules.wImportance : 0.45;
+  const wPct = Math.round(w * 100);
+  const wCard = el(`
+    <div class="card" style="margin-bottom:10px">
+      <div class="set-row" style="border:0;padding-bottom:4px">
+        <div>
+          <div class="set-title">排序权重</div>
+          <div class="set-sub">重要度 ${wPct}% · 紧急度 ${100 - wPct}%</div>
+        </div>
+      </div>
+      <input id="w-slider" type="range" min="0" max="100" step="5" value="${wPct}"
+             style="width:100%;margin:6px 0 4px">
+      <div class="set-sub" style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span>看紧急度（截止追着跑）</span>
+        <span>看重要度（星级说话）</span>
+      </div>
+      <div class="footnote">${w >= 0.75 ? '现在偏重要度：星级高的任务会排前面' : w <= 0.25 ? '现在偏紧急度：快到截止的任务会排前面' : '现在两者平衡：重要度和可行性压力各占一半'}</div>
+    </div>`);
+
+  const slider = wCard.querySelector('#w-slider');
+  let saveTimer = 0;
+  slider.oninput = (e) => {
+    const v = Number(e.target.value) / 100;
+    // 拖动时只更新文字，松手才重排，避免每拖一格都重算一次计划
+    wCard.querySelector('.set-sub').textContent = `重要度 ${Math.round(v * 100)}% · 紧急度 ${100 - Math.round(v * 100)}%`;
+    wCard.querySelector('.footnote').textContent =
+      v >= 0.75 ? '现在偏重要度：星级高的任务会排前面' : v <= 0.25 ? '现在偏紧急度：快到截止的任务会排前面' : '现在两者平衡：重要度和可行性压力各占一半';
+    store.rules.wImportance = v;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      writeStore();
+      rebuild();
+      paint();
+      toast('排序已更新');
+    }, 260);
+  };
+  frag.append(wCard);
+
   /* 时间模板（折叠） */
   const tplTotal = baseFree.reduce((a, b) => a + b, 0);
   frag.append(

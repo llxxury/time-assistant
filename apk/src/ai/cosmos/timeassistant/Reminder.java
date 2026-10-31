@@ -15,15 +15,34 @@ import org.json.JSONObject;
 public class Reminder {
     static final String PREFS = "reminders";
     static final String KEY = "list";
-    static final String CHANNEL = "plan";
+    static final String CHANNEL = "plan2"; // 换 id：通道创建后配置不可改，老通道是静音的
 
     static void ensureChannel(Context c) {
         try {
             NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+
+            // 老通道（没声音没震动）删掉，免得用户还留着
+            if (nm.getNotificationChannel("plan") != null) {
+                nm.deleteNotificationChannel("plan");
+            }
+
             if (nm.getNotificationChannel(CHANNEL) == null) {
                 NotificationChannel ch = new NotificationChannel(
                         CHANNEL, "计划提醒", NotificationManager.IMPORTANCE_HIGH);
                 ch.setDescription("到点提醒该做哪一段");
+                // 关键：不显式设置的话，通道默认静音且不震动
+                ch.enableVibration(true);
+                ch.setVibrationPattern(new long[]{0, 350, 180, 350});
+                ch.enableLights(true);
+                ch.setLightColor(0xFF7FA8C9);
+                ch.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+                ch.setSound(
+                        android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
+                        new android.media.AudioAttributes.Builder()
+                                .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build());
                 nm.createNotificationChannel(ch);
             }
         } catch (Exception ignored) {
